@@ -1,0 +1,32 @@
+[package]
+name = "cosmwasm-client-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.41.1", features = ["full"] }
+futures = "0.3"
+futures-util = "0.3"
+async-trait = "0.1"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+cosmos-sdk-proto = { version = "0.26.0"}
+prost = "0.13.3"
+prost-types = "0.13.3"
+tendermint = "0.40.0"
+tendermint-rpc = { version = "0.40.0", features = ["http-client", "websocket-client"] }
+url = "2.4"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+cosmrs = { version = "0.21.0", features = ["cosmwasm"] }
+base64 = "0.21.2"
+bytes = "1.4.0"
+tokio-stream = "0.1.14"
+tokio-util = "0.7.8"
+tonic = { version = "0.12.3", features = ["transport", "codegen"] }
+hex = "0.4.3"
+
+[build-dependencies]
+tonic-build = "0.12.3"
