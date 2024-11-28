@@ -13,11 +13,23 @@ const EVENT_PROCESSOR_SIZE: usize = 5000;
 
 /// Represents a token-related event with type, amount, and optional from/to addresses
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct TokenEvent {
-    pub event_type: String,
-    pub amount: String,
-    pub from: Option<String>,
-    pub to: Option<String>,
+pub struct PegOutEvent {
+    pub sender: String,
+    pub btc_address: String,
+    pub operator_btc_pk: String,
+    pub amount: u128,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct PegInEvent {
+    pub receiver: String,
+    pub amount: u128,
+}
+
+#[derive(Debug, Clone)]
+pub enum ContractEvent {
+    PegIn(PegInEvent),
+    PegOut(PegOutEvent),
 }
 
 /// Event listener that processes blockchain events sequentially
@@ -26,12 +38,17 @@ pub struct EventListener {
     latest_height_tx: broadcast::Sender<u64>,
     latest_height_rx: broadcast::Receiver<u64>,
     last_processed_height: u64,
-    event_sender: mpsc::Sender<TokenEvent>,
+    event_sender: mpsc::Sender<ContractEvent>,
+    contract_address: String,
 }
 
 impl EventListener {
     /// Creates a new EventListener instance
-    pub fn new(client: CosmWasmClient, event_sender: mpsc::Sender<TokenEvent>) -> Self {
+    pub fn new(
+        client: CosmWasmClient,
+        event_sender: mpsc::Sender<ContractEvent>,
+        contract_address: String,
+    ) -> Self {
         let (latest_height_tx, latest_height_rx) = broadcast::channel(EVENT_PROCESSOR_SIZE);
         Self {
             client,
@@ -39,6 +56,7 @@ impl EventListener {
             latest_height_rx,
             last_processed_height: 0,
             event_sender,
+            contract_address,
         }
     }
 
@@ -103,7 +121,6 @@ impl EventListener {
         let mut height_rx = self.latest_height_rx.resubscribe();
 
         while let Ok(latest_height) = height_rx.recv().await {
-            tracing::info!("Received latest height: {}", latest_height);
             if latest_height <= self.last_processed_height {
                 tracing::info!(
                     "Latest height {} is not greater than last processed height {}",
@@ -132,8 +149,8 @@ impl EventListener {
 
         for tx in block_txs {
             for event in tx.events {
-                if let Some(token_event) = self.parse_token_event(&event)? {
-                    self.event_sender.send(token_event).await.map_err(|e| {
+                if let Some(contract_event) = self.parse_contract_event(&event)? {
+                    self.event_sender.send(contract_event).await.map_err(|e| {
                         ClientError::EventError(format!("Failed to send event to channel: {}", e))
                     })?;
                 }
@@ -143,55 +160,65 @@ impl EventListener {
         Ok(())
     }
 
-    /// Parse a blockchain event into a TokenEvent
-    fn parse_token_event(&self, event: &abci::Event) -> Result<Option<TokenEvent>> {
-        tracing::info!("Parsing event: {:?}", event);
+    /// Parse blockchain events into ContractEvent
+    fn parse_contract_event(&self, event: &abci::Event) -> Result<Option<ContractEvent>> {
         if event.kind != "wasm" {
-            tracing::info!("Ignoring non-wasm event: {:?}", event);
             return Ok(None);
         }
 
-        let mut token_event = TokenEvent::default();
+        // Convert attributes to a HashMap for easier access
+        let attrs: std::collections::HashMap<_, _> = event
+            .attributes
+            .iter()
+            .filter_map(|attr| {
+                attr.key_str()
+                    .ok()
+                    .zip(attr.value_str().ok())
+                    .map(|(k, v)| (k, v.to_string()))
+            })
+            .collect();
 
-        // scan attributes
-        let mut contract_address = String::new();
-        let mut data = String::new();
-        let mut hash = String::new();
+        // Check if this is our target contract
+        if attrs.get("_contract_address") != Some(&self.contract_address) {
+            return Ok(None);
+        }
 
-        for attr in &event.attributes {
-            if let (Ok(key), Ok(value)) = (attr.key_str(), attr.value_str()) {
-                match key {
-                    "_contract_address" => {
-                        contract_address = value.to_string();
-                        tracing::info!("Contract address: {}", value);
-                    }
-                    "data" => {
-                        data = value.to_string();
-                        tracing::info!("Data: {}", value);
-                    }
-                    "hash_string" => {
-                        hash = value.to_string();
-                        tracing::info!("Hash: {}", value);
-                    }
-                    _ => {
-                        tracing::info!("Ignoring attribute: {}={}", key, value);
-                    }
-                }
+        // Parse amount first as it's common for both events
+        let amount = attrs
+            .get("amount")
+            .ok_or_else(|| ClientError::EventError("Missing amount".to_string()))?
+            .parse::<u128>()
+            .map_err(|e| ClientError::EventError(format!("Failed to parse amount: {}", e)))?;
+
+        match attrs.get("action").map(String::as_str) {
+            Some("peg_in") => {
+                let receiver = attrs
+                    .get("receiver")
+                    .ok_or_else(|| ClientError::EventError("Missing receiver".to_string()))?
+                    .clone();
+                Ok(Some(ContractEvent::PegIn(PegInEvent { receiver, amount })))
             }
+            Some("peg_out") => {
+                let sender = attrs
+                    .get("sender")
+                    .ok_or_else(|| ClientError::EventError("Missing sender".to_string()))?
+                    .clone();
+                let btc_address = attrs
+                    .get("btc_address")
+                    .ok_or_else(|| ClientError::EventError("Missing btc_address".to_string()))?
+                    .clone();
+                let operator_btc_pk = attrs
+                    .get("operator_btc_pk")
+                    .ok_or_else(|| ClientError::EventError("Missing operator_btc_pk".to_string()))?
+                    .clone();
+                Ok(Some(ContractEvent::PegOut(PegOutEvent {
+                    sender,
+                    btc_address,
+                    operator_btc_pk,
+                    amount,
+                })))
+            }
+            _ => Ok(None),
         }
-
-        // if data is not empty, it's a token transfer event
-        if !data.is_empty() {
-            token_event.event_type = "token_transfer".to_string(); // 或其他适当的事件类型
-            token_event.amount = data; // data字段可能需要解码，具体取决于合约的实现
-            token_event.from = Some(contract_address.clone());
-            // token_event.to = Some(contract_address.clone());
-
-            tracing::info!("Parsed token event: {:?}", token_event);
-            return Ok(Some(token_event));
-        }
-
-        tracing::info!("No valid token event data found");
-        Ok(None)
     }
 }

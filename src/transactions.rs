@@ -145,41 +145,20 @@ impl CosmWasmClient {
     where
         M: Message + Into<Any>,
     {
-        // Get account info and print it
-        let account = self
-            .get_account_info(self.wallet.account_id.to_string())
-            .await?;
-        println!(
-            "Account info: account_number={}, sequence={}",
-            account.account_number, account.sequence
-        );
-
         let tx_raw = self.build_tx(msg).await?;
 
         let tx_bytes = tx_raw
             .to_bytes()
             .map_err(|e| ClientError::Other(e.to_string()))?;
 
-        println!("Broadcasting tx...");
         let response = self.broadcast_tx(tx_bytes).await?;
+        let tx_response = response.tx_response.unwrap();
 
-        println!("Response: {:?}", response);
-
-        if let Some(tx_response) = &response.tx_response {
-            if tx_response.code != 0 {
-                println!("Error code: {}", tx_response.code);
-                println!("Error log: {}", tx_response.raw_log);
-                return Err(ClientError::Other(format!(
-                    "Transaction failed with code {}: {}",
-                    tx_response.code, tx_response.raw_log
-                )));
-            }
+        if tx_response.code != 0 {
+            return Err(ClientError::Other(tx_response.raw_log));
         }
 
-        response
-            .tx_response
-            .ok_or_else(|| ClientError::Other("Missing tx_response".to_string()))
-            .map(|resp| resp.txhash)
+        Ok(tx_response.txhash)
     }
 
     /// Builds and signs a transaction with the given message
@@ -192,11 +171,6 @@ impl CosmWasmClient {
             .await?;
         let account_number = account.account_number;
         let sequence = account.sequence;
-
-        println!(
-            "Building tx with account_number={}, sequence={}",
-            account_number, sequence
-        );
 
         let chain_id = CHAIN_ID
             .parse()
@@ -211,11 +185,9 @@ impl CosmWasmClient {
 
         let tx_body = BodyBuilder::new().msg(msg).finish();
 
-        println!("Creating auth info with sequence {}", sequence);
         let auth_info = SignerInfo::single_direct(Some(self.wallet.public_key.clone()), sequence)
             .auth_info(fee);
 
-        println!("Creating sign doc with account_number {}", account_number);
         let sign_doc = SignDoc::new(&tx_body, &auth_info, &chain_id, account_number)
             .map_err(|e| ClientError::SigningError(format!("Failed to create sign doc: {}", e)))?;
 

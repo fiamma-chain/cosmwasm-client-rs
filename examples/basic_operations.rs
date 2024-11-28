@@ -1,6 +1,7 @@
 use cosmrs::AccountId;
 use cosmwasm_client_rs::{CosmWasmClient, Result};
 use std::str::FromStr;
+use tokio::time;
 use tracing_subscriber::fmt;
 
 #[tokio::main]
@@ -11,16 +12,16 @@ async fn main() -> Result<()> {
     // Initialize client with empty contract address (we don't have it yet)
     let grpc_url = "http://localhost:9090";
     let ws_url = "ws://localhost:26657/websocket";
-    //let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
-    let private_key = "e18716358226488b7e49e3fb8f1af9a2bbbc16be57db54cbd4cd6e17a69f97c7";
+    let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
+    // let private_key = "e18716358226488b7e49e3fb8f1af9a2bbbc16be57db54cbd4cd6e17a69f97c7";
 
-    // // For initial deployment, we use a dummy contract address
-    // // let dummy_contract = AccountId::from_str("fiamma13k3wqnp4zcrlwtph6xk7l6feunu5ae2k6pqnaw").unwrap();
+    // For initial deployment, we use a dummy contract address
+    // let dummy_contract = AccountId::from_str("fiamma13k3wqnp4zcrlwtph6xk7l6feunu5ae2k6pqnaw").unwrap();
     // let client = CosmWasmClient::new(grpc_url, ws_url, private_key, None).await?;
 
     // // Test 1: Instantiate the contract
-    // let code_id = 1; // Replace with your actual code ID
-    // let denom = "bbtc";
+    // let code_id = 4; // Replace with your actual code ID
+    // let denom = "ufia";
 
     // let label = "Bitcoin Bridge v1"; // A human readable label for the contract
     // let operators = vec![
@@ -41,24 +42,27 @@ async fn main() -> Result<()> {
     // TODO: Get the contract address from the instantiate event
     // After getting the contract address, create a new client with the correct contract address
     let contract =
-        AccountId::from_str("fiamma14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9sgx3jav")
+        AccountId::from_str("fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux")
             .unwrap();
     let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract)).await?;
 
-    // Test 2: Peg-in some tokens
+    // // Test 2: Peg-in some tokens
     let recipient = "fiamma1ufs3tlq4umljk0qfe8k5ya0x6hpavn89g6kfpy";
-    let amount = 1_000_000; // 0.01 BTC in satoshis
+    let amount = 22_000_000;
     println!("Performing peg-in...");
     let tx_hash = client.peg_in(recipient, amount).await?;
     println!("Peg-in completed. Tx hash: {}", tx_hash);
 
+    // Wait for 3 seconds
+    time::sleep(time::Duration::from_secs(3)).await;
+
     // // Test 3: Peg-out some tokens
-    // let btc_address = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
-    // let amount = 500_000; // 0.005 BTC in satoshis
-    // let operator_btc_pk = "02a8513d9931896d5d3afc8063148db75d8851fd1fc41b1098ba2a6a766db563d4";
-    // println!("Performing peg-out...");
-    // let tx_hash = client.peg_out(btc_address, amount, operator_btc_pk).await?;
-    // println!("Peg-out completed. Tx hash: {}", tx_hash);
+    let btc_address = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
+    let amount = 2200_000;
+    let operator_btc_pk = "02a8513d9931896d5d3afc8063148db75d8851fd1fc41b1098ba2a6a766db563d4";
+    println!("Performing peg-out...");
+    let tx_hash = client.peg_out(btc_address, amount, operator_btc_pk).await?;
+    println!("Peg-out completed. Tx hash: {}", tx_hash);
 
     Ok(())
 }

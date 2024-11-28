@@ -17,6 +17,9 @@ pub enum ClientError {
     #[error("Parse error: {0}")]
     ParseError(String),
 
+    #[error("Decode error: {0}")]
+    DecodeError(String),
+
     #[error("Event error: {0}")]
     EventError(String),
 
