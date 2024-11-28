@@ -80,24 +80,26 @@ impl CosmWasmClient {
             .map_err(|e| ClientError::WebSocketError(format!("Failed to subscribe: {}", e)))
     }
 
-    pub async fn get_block_txs(&self, height: Height) -> Result<Vec<CustomTxResult>> {
+    pub async fn get_block_events(&self, height: u64) -> Result<Vec<Vec<abci::Event>>> {
+
+        let height = Height::try_from(height).map_err(|e| {
+            ClientError::WebSocketError(format!("Failed to convert height to u64: {}", e))
+        })?;
+
         let block_results = self.ws_client.block_results(height).await.map_err(|e| {
             ClientError::WebSocketError(format!("Failed to get block results: {}", e))
         })?;
 
-        let txs = block_results
+        let events = block_results
             .txs_results
             .unwrap_or_default()
             .into_iter()
-            .map(|tx_result| CustomTxResult {
-                log: tx_result.log,
-                gas_wanted: tx_result.gas_wanted,
-                gas_used: tx_result.gas_used,
-                events: tx_result.events,
+            .map(|tx_result| {
+                tx_result.events
             })
             .collect();
 
-        Ok(txs)
+        Ok(events)
     }
 
     pub async fn get_account_info(&self, address: String) -> Result<BaseAccount> {
@@ -138,8 +140,6 @@ impl CosmWasmClient {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CustomTxResult {
-    pub log: String,
-    pub gas_wanted: i64,
-    pub gas_used: i64,
+    pub block_height: u64,
     pub events: Vec<abci::Event>,
 }

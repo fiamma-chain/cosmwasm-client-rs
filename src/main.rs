@@ -39,17 +39,21 @@ async fn main() -> Result<()> {
     // Process events in main task
     while let Some(event) = rx.recv().await {
         match event {
-            ContractEvent::PegIn(PegInEvent { receiver, amount }) => {
-                tracing::info!("Received PegIn event {} {}", receiver, amount);
+            ContractEvent::PegIn(PegInEvent { block_height, msg_index, receiver, amount }) => {
+                tracing::info!("Received PegIn event block_height: {} msg_index: {} receiver: {} amount: {}", block_height, msg_index, receiver, amount);
             }
-            ContractEvent::PegOut(PegOutEvent {
+            ContractEvent::PegOut(PegOutEvent { 
+                block_height,
+                msg_index,
                 sender,
                 btc_address,
                 operator_btc_pk,
                 amount,
             }) => {
                 tracing::info!(
-                    "Received PegOut event {} {} {} {}",
+                    "Received PegOut event block_height: {} msg_index: {} sender: {} btc_address: {} operator_btc_pk: {} amount: {}",
+                    block_height,
+                    msg_index,
                     sender,
                     btc_address,
                     operator_btc_pk,

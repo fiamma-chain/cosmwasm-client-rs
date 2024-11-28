@@ -3,7 +3,6 @@ use crate::error::{ClientError, Result};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tendermint::abci;
-use tendermint::block::Height;
 use tendermint_rpc::event::EventData;
 use tendermint_rpc::query::{EventType, Query};
 use tokio::sync::{broadcast, mpsc};
@@ -14,6 +13,8 @@ const EVENT_PROCESSOR_SIZE: usize = 5000;
 /// Represents a token-related event with type, amount, and optional from/to addresses
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct PegOutEvent {
+    pub block_height: u64,
+    pub msg_index: u32,
     pub sender: String,
     pub btc_address: String,
     pub operator_btc_pk: String,
@@ -22,6 +23,8 @@ pub struct PegOutEvent {
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct PegInEvent {
+    pub block_height: u64,
+    pub msg_index: u32,
     pub receiver: String,
     pub amount: u128,
 }
@@ -144,12 +147,10 @@ impl EventListener {
 
     /// Process events in a single block
     async fn process_block(&self, height: u64) -> Result<()> {
-        let height = Height::try_from(height).expect("Failed to convert height to u64");
-        let block_txs = self.client.get_block_txs(height).await?;
-
-        for tx in block_txs {
-            for event in tx.events {
-                if let Some(contract_event) = self.parse_contract_event(&event)? {
+        let block_events = self.client.get_block_events(height).await?;
+        for events in block_events {
+            for event in events {       
+                if let Some(contract_event) = self.parse_contract_event(height, &event)? {
                     self.event_sender.send(contract_event).await.map_err(|e| {
                         ClientError::EventError(format!("Failed to send event to channel: {}", e))
                     })?;
@@ -161,7 +162,7 @@ impl EventListener {
     }
 
     /// Parse blockchain events into ContractEvent
-    fn parse_contract_event(&self, event: &abci::Event) -> Result<Option<ContractEvent>> {
+    fn parse_contract_event(&self, block_height: u64, event: &abci::Event) -> Result<Option<ContractEvent>> {
         if event.kind != "wasm" {
             return Ok(None);
         }
@@ -190,13 +191,19 @@ impl EventListener {
             .parse::<u128>()
             .map_err(|e| ClientError::EventError(format!("Failed to parse amount: {}", e)))?;
 
+        let msg_index = attrs
+            .get("msg_index")
+            .ok_or_else(|| ClientError::EventError("Missing msg_index".to_string()))?
+            .parse::<u32>()
+            .map_err(|e| ClientError::EventError(format!("Failed to parse msg_index: {}", e)))?;
+
         match attrs.get("action").map(String::as_str) {
             Some("peg_in") => {
                 let receiver = attrs
                     .get("receiver")
                     .ok_or_else(|| ClientError::EventError("Missing receiver".to_string()))?
                     .clone();
-                Ok(Some(ContractEvent::PegIn(PegInEvent { receiver, amount })))
+                Ok(Some(ContractEvent::PegIn(PegInEvent { block_height, msg_index, receiver, amount })))
             }
             Some("peg_out") => {
                 let sender = attrs
@@ -212,6 +219,8 @@ impl EventListener {
                     .ok_or_else(|| ClientError::EventError("Missing operator_btc_pk".to_string()))?
                     .clone();
                 Ok(Some(ContractEvent::PegOut(PegOutEvent {
+                    block_height,
+                    msg_index,
                     sender,
                     btc_address,
                     operator_btc_pk,
