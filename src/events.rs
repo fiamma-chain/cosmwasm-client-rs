@@ -103,16 +103,15 @@ impl EventListener {
         let mut height_rx = self.latest_height_rx.resubscribe();
 
         while let Ok(latest_height) = height_rx.recv().await {
+            tracing::info!("Received latest height: {}", latest_height);
             if latest_height <= self.last_processed_height {
+                tracing::info!(
+                    "Latest height {} is not greater than last processed height {}",
+                    latest_height,
+                    self.last_processed_height
+                );
                 continue;
             }
-
-            tracing::debug!(
-                "Processing blocks from {} to {}",
-                self.last_processed_height + 1,
-                latest_height
-            );
-
             // Process all blocks from last_processed_height + 1 to latest_height
             for height in self.last_processed_height + 1..=latest_height {
                 if let Err(e) = self.process_block(height).await {
@@ -121,11 +120,6 @@ impl EventListener {
                 }
                 self.last_processed_height = height;
             }
-
-            tracing::info!(
-                "Processed blocks up to height {}",
-                self.last_processed_height
-            );
         }
 
         Ok(())
@@ -151,23 +145,53 @@ impl EventListener {
 
     /// Parse a blockchain event into a TokenEvent
     fn parse_token_event(&self, event: &abci::Event) -> Result<Option<TokenEvent>> {
+        tracing::info!("Parsing event: {:?}", event);
         if event.kind != "wasm" {
+            tracing::info!("Ignoring non-wasm event: {:?}", event);
             return Ok(None);
         }
 
         let mut token_event = TokenEvent::default();
+
+        // scan attributes
+        let mut contract_address = String::new();
+        let mut data = String::new();
+        let mut hash = String::new();
+
         for attr in &event.attributes {
             if let (Ok(key), Ok(value)) = (attr.key_str(), attr.value_str()) {
                 match key {
-                    "action" => token_event.event_type = value.to_string(),
-                    "amount" => token_event.amount = value.to_string(),
-                    "from" => token_event.from = Some(value.to_string()),
-                    "to" => token_event.to = Some(value.to_string()),
-                    _ => {}
+                    "_contract_address" => {
+                        contract_address = value.to_string();
+                        tracing::info!("Contract address: {}", value);
+                    }
+                    "data" => {
+                        data = value.to_string();
+                        tracing::info!("Data: {}", value);
+                    }
+                    "hash_string" => {
+                        hash = value.to_string();
+                        tracing::info!("Hash: {}", value);
+                    }
+                    _ => {
+                        tracing::info!("Ignoring attribute: {}={}", key, value);
+                    }
                 }
             }
         }
 
-        Ok(Some(token_event))
+        // if data is not empty, it's a token transfer event
+        if !data.is_empty() {
+            token_event.event_type = "token_transfer".to_string(); // 或其他适当的事件类型
+            token_event.amount = data; // data字段可能需要解码，具体取决于合约的实现
+            token_event.from = Some(contract_address.clone());
+            // token_event.to = Some(contract_address.clone());
+
+            tracing::info!("Parsed token event: {:?}", token_event);
+            return Ok(Some(token_event));
+        }
+
+        tracing::info!("No valid token event data found");
+        Ok(None)
     }
 }

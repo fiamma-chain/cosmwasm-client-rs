@@ -3,6 +3,10 @@ name = "cosmwasm-client-rs"
 version = "0.1.0"
 edition = "2021"
 
+[[example]]
+name = "basic_operations"
+path = "examples/basic_operations.rs"
+
 [dependencies]
 tokio = { version = "1.41.1", features = ["full"] }
 futures = "0.3"
@@ -27,6 +31,14 @@ tokio-stream = "0.1.14"
 tokio-util = "0.7.8"
 tonic = { version = "0.12.3", features = ["transport", "codegen"] }
 hex = "0.4.3"
+cosmwasm-std = { version = "2.1.4", default-features = false, features = [
+    "std",
+    "abort",
+    "staking",
+    "stargate",
+    "cosmwasm_2_0",
+] }
+cosmwasm-schema = "2.1.4"
 
 [build-dependencies]
 tonic-build = "0.12.3"

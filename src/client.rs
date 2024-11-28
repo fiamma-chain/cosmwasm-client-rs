@@ -26,7 +26,7 @@ pub struct CosmWasmClient {
     grpc_channel: tonic::transport::Channel,
     ws_client: Arc<RwLock<Option<WebSocketClient>>>,
     pub wallet: Wallet,
-    pub contract: AccountId,
+    pub contract: Option<AccountId>,
 }
 
 impl CosmWasmClient {
@@ -34,7 +34,7 @@ impl CosmWasmClient {
         grpc_url: &str,
         ws_url: &str,
         private_key: &str,
-        contract: AccountId,
+        contract: Option<AccountId>,
     ) -> Result<Self> {
         let grpc_channel = tonic::transport::Channel::from_shared(grpc_url.to_string())
             .map_err(|e| ClientError::ConfigError(format!("Invalid gRPC URL: {}", e)))?
@@ -90,33 +90,19 @@ impl CosmWasmClient {
         Ok(subscription)
     }
 
-    pub async fn get_latest_block_height(&self) -> Result<u64> {
-        let mut ws_client = self.ws_client.write().await;
-        let client = ws_client.as_mut().ok_or_else(|| {
-            ClientError::WebSocketError("WebSocket client not initialized".to_string())
-        })?;
+    // pub async fn get_latest_block_height(&self) -> Result<u64> {
+    //     let mut ws_client = self.ws_client.write().await;
+    //     let client = ws_client.as_mut().ok_or_else(|| {
+    //         ClientError::WebSocketError("WebSocket client not initialized".to_string())
+    //     })?;
 
-        let info = client
-            .status()
-            .await
-            .map_err(|e| ClientError::WebSocketError(format!("Failed to get status: {}", e)))?;
+    //     let info = client
+    //         .status()
+    //         .await
+    //         .map_err(|e| ClientError::WebSocketError(format!("Failed to get status: {}", e)))?;
 
-        Ok(info.sync_info.latest_block_height.value())
-    }
-
-    pub async fn get_block(&self, height: Height) -> Result<tendermint::Block> {
-        let mut ws_client = self.ws_client.write().await;
-        let client = ws_client.as_mut().ok_or_else(|| {
-            ClientError::WebSocketError("WebSocket client not initialized".to_string())
-        })?;
-
-        let block = client
-            .block(height)
-            .await
-            .map_err(|e| ClientError::WebSocketError(format!("Failed to get block: {}", e)))?;
-
-        Ok(block.block)
-    }
+    //     Ok(info.sync_info.latest_block_height.value())
+    // }
 
     pub async fn get_block_txs(&self, height: Height) -> Result<Vec<CustomTxResult>> {
         let mut ws_client = self.ws_client.write().await;
@@ -172,25 +158,6 @@ impl CosmWasmClient {
             .into_inner();
 
         Ok(response)
-    }
-
-    pub async fn wait_for_tx(
-        &self,
-        hash: &str,
-        timeout: std::time::Duration,
-    ) -> Result<GetTxResponse> {
-        let start = std::time::Instant::now();
-
-        while start.elapsed() < timeout {
-            match self.get_tx(hash).await {
-                Ok(response) => return Ok(response),
-                Err(_) => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
-            }
-        }
-
-        Err(ClientError::TimeoutError(
-            "Transaction not found".to_string(),
-        ))
     }
 }
 

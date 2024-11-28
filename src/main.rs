@@ -15,13 +15,13 @@ async fn main() -> Result<()> {
     // Initialize client
     let grpc_url = "http://localhost:9090";
     let ws_url = "ws://localhost:26657/websocket";
-    let contract_address = "contract-address";
+    let contract_address = "fiamma14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9sgx3jav";
 
-    let private_key = "";
+    let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
 
     let contract = AccountId::from_str(contract_address).unwrap();
 
-    let client = CosmWasmClient::new(grpc_url, ws_url, private_key, contract).await?;
+    let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract)).await?;
 
     // Create and start event listener
     let mut event_listener = EventListener::new(client.clone(), tx);
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
                 );
             }
             _ => {
-                tracing::debug!("Unknown event type: {}", event.event_type);
+                tracing::info!("Unknown event type: {}", event.event_type);
             }
         }
     }
