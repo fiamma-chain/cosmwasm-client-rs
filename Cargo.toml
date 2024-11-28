@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [[example]]
-name = "basic_operations"
-path = "examples/basic_operations.rs"
+name = "contract_operations"
+path = "examples/contract_operations.rs"
+
+[[example]]
+name = "event_listener"
+path = "examples/event_listener.rs"
 
 [dependencies]
 tokio = { version = "1.41.1", features = ["full"] }
