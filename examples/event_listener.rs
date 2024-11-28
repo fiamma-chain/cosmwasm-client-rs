@@ -1,14 +1,15 @@
+use anyhow;
 use cosmrs::AccountId;
 use cosmwasm_client_rs::{
     events::{ContractEvent, PegInEvent, PegOutEvent},
-    CosmWasmClient, EventListener, Result,
+    CosmWasmClient, EventListener,
 };
 use std::str::FromStr;
 use tokio::sync::mpsc;
 use tracing_subscriber::fmt;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     // Setup logging
     fmt::init();
 
@@ -22,9 +23,11 @@ async fn main() -> Result<()> {
     let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
 
     let contract = AccountId::from_str(contract_address)
-        .map_err(|e| cosmwasm_client_rs::ClientError::ParseError(format!("Invalid contract address: {}", e)))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse contract address: {}", e))?;
 
-    let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract)).await?;
+    let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract))
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
 
     // Create and start event listener
     let mut event_listener = EventListener::new(client.clone(), tx, contract_address.to_string());

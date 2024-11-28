@@ -1,6 +1,6 @@
 use crate::chain::{CHAIN_ID, DENOM, FEE_AMOUNT, GAS_LIMIT};
 use crate::client::CosmWasmClient;
-use crate::error::{ClientError, Result};
+use anyhow::Context;
 use cosmos_sdk_proto::traits::Message;
 use cosmrs::cosmwasm::{MsgExecuteContract, MsgInstantiateContract};
 use cosmrs::tx::{BodyBuilder, Fee, Msg, Raw, SignDoc, SignerInfo};
@@ -18,6 +18,7 @@ pub struct InstantiateMsg {
     /// operators is the list of operators
     pub operators: Vec<Operator>,
 }
+
 #[cw_serde]
 pub struct Operator {
     /// btc_pk is the BTC PK of the operator
@@ -49,7 +50,7 @@ impl CosmWasmClient {
         denom: &str,
         operators: Vec<Operator>,
         label: &str,
-    ) -> Result<String> {
+    ) -> anyhow::Result<String> {
         let msg = InstantiateMsg {
             denom: denom.to_string(),
             operators,
@@ -59,7 +60,7 @@ impl CosmWasmClient {
     }
 
     /// Mints tokens to the specified recipient
-    pub async fn peg_in(&self, recipient: &str, amount: u128) -> Result<String> {
+    pub async fn peg_in(&self, recipient: &str, amount: u128) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegIn {
             receiver_address: Addr::unchecked(recipient),
             amount: Uint128::from(amount),
@@ -74,7 +75,7 @@ impl CosmWasmClient {
         btc_address: &str,
         amount: u128,
         operator_btc_pk: &str,
-    ) -> Result<String> {
+    ) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegOut {
             btc_address: btc_address.to_string(),
             amount: Uint128::from(amount),
@@ -89,13 +90,11 @@ impl CosmWasmClient {
         code_id: u64,
         msg: &T,
         label: &str,
-    ) -> Result<String> {
-        // Serialize contract init message
-        let msg_bytes = serde_json::to_vec(&msg).map_err(|e| {
-            ClientError::EncodingError(format!("Failed to serialize message: {}", e))
-        })?;
+    ) -> anyhow::Result<String> {
+        let msg_bytes = serde_json::to_vec(msg)
+            .map_err(anyhow::Error::from)
+            .context("Failed to serialize message")?;
 
-        // Create instantiate contract message
         let instantiate_msg = MsgInstantiateContract {
             sender: self.wallet.account_id.clone(),
             admin: Some(self.wallet.account_id.clone()),
@@ -108,24 +107,22 @@ impl CosmWasmClient {
         self.build_and_broadcast_tx(
             instantiate_msg
                 .to_any()
-                .map_err(|e| ClientError::Other(e.to_string()))?,
+                .map_err(|e| anyhow::anyhow!("Failed to convert message to Any: {}", e))?,
         )
         .await
     }
 
     /// Build and broadcasts a transaction with the given message
-    pub async fn execute_contract<T: Serialize>(&self, msg: &T) -> Result<String> {
-        // Serialize contract message
-        let msg_bytes = serde_json::to_vec(msg).map_err(|e| {
-            ClientError::EncodingError(format!("Failed to serialize message: {}", e))
-        })?;
+    pub async fn execute_contract<T: Serialize>(&self, msg: &T) -> anyhow::Result<String> {
+        let msg_bytes = serde_json::to_vec(msg)
+            .map_err(anyhow::Error::from)
+            .context("Failed to serialize message")?;
 
         let contract = self
             .contract
             .clone()
-            .ok_or(ClientError::Other("No contract address found".to_string()))?;
+            .ok_or_else(|| anyhow::anyhow!("No contract address found"))?;
 
-        // Create execute contract message
         let execute_msg = MsgExecuteContract {
             sender: self.wallet.account_id.clone(),
             contract: contract,
@@ -136,12 +133,12 @@ impl CosmWasmClient {
         self.build_and_broadcast_tx(
             execute_msg
                 .to_any()
-                .map_err(|e| ClientError::Other(e.to_string()))?,
+                .map_err(|e| anyhow::anyhow!("Failed to convert message to Any: {}", e))?,
         )
         .await
     }
 
-    async fn build_and_broadcast_tx<M>(&self, msg: M) -> Result<String>
+    async fn build_and_broadcast_tx<M>(&self, msg: M) -> anyhow::Result<String>
     where
         M: Message + Into<Any>,
     {
@@ -149,21 +146,25 @@ impl CosmWasmClient {
 
         let tx_bytes = tx_raw
             .to_bytes()
-            .map_err(|e| ClientError::Other(e.to_string()))?;
+            .map_err(|e| anyhow::anyhow!("Failed to serialize transaction: {}", e))?;
 
         let response = self.broadcast_tx(tx_bytes).await?;
-        let tx_response = response.tx_response
-            .ok_or_else(|| ClientError::Other("Transaction response is empty".to_string()))?;
+        let tx_response = response
+            .tx_response
+            .ok_or_else(|| anyhow::anyhow!("Transaction response is empty"))?;
 
         if tx_response.code != 0 {
-            return Err(ClientError::Other(tx_response.raw_log));
+            return Err(anyhow::anyhow!(
+                "Transaction failed: {}",
+                tx_response.raw_log
+            ));
         }
 
         Ok(tx_response.txhash)
     }
 
     /// Builds and signs a transaction with the given message
-    pub async fn build_tx<M>(&self, msg: M) -> Result<Raw>
+    pub async fn build_tx<M>(&self, msg: M) -> anyhow::Result<Raw>
     where
         M: Message + Into<Any>,
     {
@@ -173,14 +174,11 @@ impl CosmWasmClient {
         let account_number = account.account_number;
         let sequence = account.sequence;
 
-        let chain_id = CHAIN_ID
-            .parse()
-            .map_err(|e| ClientError::ParseError(format!("Invalid chain ID: {}", e)))?;
+        let chain_id = CHAIN_ID.parse().context("Invalid chain ID")?;
 
         let fee = Coin {
             amount: FEE_AMOUNT,
-            denom: Denom::from_str(DENOM)
-                .map_err(|e| ClientError::ParseError(format!("Invalid denom: {}", e)))?,
+            denom: Denom::from_str(DENOM).map_err(|e| anyhow::anyhow!("Invalid denom: {}", e))?,
         };
         let fee = Fee::from_amount_and_gas(fee, GAS_LIMIT);
 
@@ -190,7 +188,7 @@ impl CosmWasmClient {
             .auth_info(fee);
 
         let sign_doc = SignDoc::new(&tx_body, &auth_info, &chain_id, account_number)
-            .map_err(|e| ClientError::SigningError(format!("Failed to create sign doc: {}", e)))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create sign doc: {}", e))?;
 
         self.wallet.sign(sign_doc)
     }

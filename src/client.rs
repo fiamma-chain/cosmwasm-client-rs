@@ -1,6 +1,6 @@
+use anyhow::Context;
 use cosmrs::AccountId;
 use prost::Message;
-use serde::{Deserialize, Serialize};
 use tendermint::abci;
 use tendermint::block::Height;
 use tendermint_rpc::Subscription;
@@ -14,10 +14,7 @@ use cosmos_sdk_proto::cosmos::{
     },
 };
 
-use crate::{
-    error::{ClientError, Result},
-    wallet::Wallet,
-};
+use crate::wallet::Wallet;
 
 #[derive(Clone)]
 pub struct CosmWasmClient {
@@ -33,10 +30,10 @@ impl CosmWasmClient {
         ws_url: &str,
         private_key: &str,
         contract: Option<AccountId>,
-    ) -> Result<Self> {
-        let (ws_client, driver) = WebSocketClient::new(ws_url).await.map_err(|e| {
-            ClientError::WebSocketError(format!("Failed to create WebSocket client: {}", e))
-        })?;
+    ) -> anyhow::Result<Self> {
+        let (ws_client, driver) = WebSocketClient::new(ws_url)
+            .await
+            .context("Failed to create WebSocket client")?;
 
         // Spawn WebSocket driver in a separate task
         tokio::spawn(async move {
@@ -55,91 +52,82 @@ impl CosmWasmClient {
         })
     }
 
-    pub async fn broadcast_tx(&self, tx_bytes: Vec<u8>) -> Result<BroadcastTxResponse> {
+    pub async fn broadcast_tx(&self, tx_bytes: Vec<u8>) -> anyhow::Result<BroadcastTxResponse> {
         let mut client = ServiceClient::connect(self.grpc_url.clone())
             .await
-            .map_err(|e| ClientError::GrpcError(format!("Failed to connect: {}", e)))?;
+            .context("Failed to connect to gRPC service")?;
 
         let request = tonic::Request::new(BroadcastTxRequest {
             tx_bytes,
             mode: BroadcastMode::Sync as i32,
         });
 
-        let response = client.broadcast_tx(request).await.map_err(|e| {
-            ClientError::GrpcError(format!("Failed to broadcast transaction: {}", e))
-        })?;
+        let response = client
+            .broadcast_tx(request)
+            .await
+            .context("Failed to broadcast transaction")?;
 
         Ok(response.into_inner())
     }
 
-    pub async fn subscribe_events(&self, query: Query) -> Result<Subscription> {
+    pub async fn subscribe_events(&self, query: Query) -> anyhow::Result<Subscription> {
         self.ws_client
             .clone()
             .subscribe(query)
             .await
-            .map_err(|e| ClientError::WebSocketError(format!("Failed to subscribe: {}", e)))
+            .context("Failed to subscribe to events")
     }
 
-    pub async fn get_block_events(&self, height: u64) -> Result<Vec<Vec<abci::Event>>> {
+    pub async fn get_block_events(&self, height: u64) -> anyhow::Result<Vec<Vec<abci::Event>>> {
+        let height = Height::try_from(height).context("Failed to convert height to u64")?;
 
-        let height = Height::try_from(height).map_err(|e| {
-            ClientError::WebSocketError(format!("Failed to convert height to u64: {}", e))
-        })?;
-
-        let block_results = self.ws_client.block_results(height).await.map_err(|e| {
-            ClientError::WebSocketError(format!("Failed to get block results: {}", e))
-        })?;
+        let block_results = self
+            .ws_client
+            .block_results(height)
+            .await
+            .context("Failed to get block results")?;
 
         let events = block_results
             .txs_results
             .unwrap_or_default()
             .into_iter()
-            .map(|tx_result| {
-                tx_result.events
-            })
+            .map(|tx_result| tx_result.events)
             .collect();
 
         Ok(events)
     }
 
-    pub async fn get_account_info(&self, address: String) -> Result<BaseAccount> {
+    pub async fn get_account_info(&self, address: String) -> anyhow::Result<BaseAccount> {
         let mut client = QueryClient::connect(self.grpc_url.clone())
             .await
-            .map_err(|e| ClientError::GrpcError(format!("Failed to connect: {}", e)))?;
+            .context("Failed to connect to gRPC service")?;
 
         let response = client
             .account(QueryAccountRequest { address })
             .await
-            .map_err(|e| ClientError::GrpcError(format!("Failed to get account: {}", e)))?;
+            .context("Failed to get account")?;
 
         let account = response
             .into_inner()
             .account
-            .ok_or_else(|| ClientError::ParseError("No account data found".to_string()))?;
+            .ok_or_else(|| anyhow::anyhow!("No account data found"))?;
 
-        BaseAccount::decode(account.value.as_slice())
-            .map_err(|e| ClientError::ParseError(format!("Failed to decode account: {}", e)))
+        BaseAccount::decode(account.value.as_slice()).context("Failed to decode account info")
     }
 
-    pub async fn get_tx(&self, hash: &str) -> Result<GetTxResponse> {
+    pub async fn get_tx(&self, hash: &str) -> anyhow::Result<GetTxResponse> {
         let mut client = ServiceClient::connect(self.grpc_url.clone())
             .await
-            .map_err(|e| ClientError::GrpcError(format!("Failed to connect: {}", e)))?;
+            .context("Failed to connect to gRPC service")?;
 
         let response = client
             .get_tx(GetTxRequest {
                 hash: hash.to_string(),
             })
             .await
-            .map_err(|e| ClientError::GrpcError(format!("Failed to get transaction: {}", e)))?
+            .context("Failed to get transaction")?
             .into_inner();
 
         Ok(response)
     }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct CustomTxResult {
-    pub block_height: u64,
-    pub events: Vec<abci::Event>,
 }

@@ -1,5 +1,5 @@
 use crate::client::CosmWasmClient;
-use crate::error::{ClientError, Result};
+use anyhow::{anyhow, Result};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tendermint::abci;
@@ -64,7 +64,7 @@ impl EventListener {
     }
 
     /// Starts the event subscription and processing
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&mut self) -> anyhow::Result<()> {
         // Start WebSocket subscription in a separate task
         let height_tx = self.latest_height_tx.clone();
         let client = self.client.clone();
@@ -83,7 +83,7 @@ impl EventListener {
     async fn subscribe_to_events(
         client: CosmWasmClient,
         height_tx: broadcast::Sender<u64>,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         tracing::info!("Starting WebSocket subscription for new events");
         let query = Query::from(EventType::NewBlock);
         let mut event_stream = client.subscribe_events(query).await?;
@@ -120,7 +120,7 @@ impl EventListener {
     }
 
     /// Process blocks sequentially, ensuring order
-    async fn process_blocks_sequentially(&mut self) -> Result<()> {
+    async fn process_blocks_sequentially(&mut self) -> anyhow::Result<()> {
         let mut height_rx = self.latest_height_rx.resubscribe();
 
         while let Ok(latest_height) = height_rx.recv().await {
@@ -146,14 +146,15 @@ impl EventListener {
     }
 
     /// Process events in a single block
-    async fn process_block(&self, height: u64) -> Result<()> {
+    async fn process_block(&self, height: u64) -> anyhow::Result<()> {
         let block_events = self.client.get_block_events(height).await?;
         for events in block_events {
-            for event in events {       
+            for event in events {
                 if let Some(contract_event) = self.parse_contract_event(height, &event)? {
-                    self.event_sender.send(contract_event).await.map_err(|e| {
-                        ClientError::EventError(format!("Failed to send event to channel: {}", e))
-                    })?;
+                    self.event_sender
+                        .send(contract_event)
+                        .await
+                        .map_err(|e| anyhow!("Failed to send event to channel: {}", e))?;
                 }
             }
         }
@@ -162,7 +163,11 @@ impl EventListener {
     }
 
     /// Parse blockchain events into ContractEvent
-    fn parse_contract_event(&self, block_height: u64, event: &abci::Event) -> Result<Option<ContractEvent>> {
+    fn parse_contract_event(
+        &self,
+        block_height: u64,
+        event: &abci::Event,
+    ) -> Result<Option<ContractEvent>> {
         if event.kind != "wasm" {
             return Ok(None);
         }
@@ -187,36 +192,41 @@ impl EventListener {
         // Parse amount first as it's common for both events
         let amount = attrs
             .get("amount")
-            .ok_or_else(|| ClientError::EventError("Missing amount".to_string()))?
+            .ok_or_else(|| anyhow!("Missing amount"))?
             .parse::<u128>()
-            .map_err(|e| ClientError::EventError(format!("Failed to parse amount: {}", e)))?;
+            .map_err(|e| anyhow!("Failed to parse amount: {}", e))?;
 
         let msg_index = attrs
             .get("msg_index")
-            .ok_or_else(|| ClientError::EventError("Missing msg_index".to_string()))?
+            .ok_or_else(|| anyhow!("Missing msg_index"))?
             .parse::<u32>()
-            .map_err(|e| ClientError::EventError(format!("Failed to parse msg_index: {}", e)))?;
+            .map_err(|e| anyhow!("Failed to parse msg_index: {}", e))?;
 
         match attrs.get("action").map(String::as_str) {
             Some("peg_in") => {
                 let receiver = attrs
                     .get("receiver")
-                    .ok_or_else(|| ClientError::EventError("Missing receiver".to_string()))?
+                    .ok_or_else(|| anyhow!("Missing receiver"))?
                     .clone();
-                Ok(Some(ContractEvent::PegIn(PegInEvent { block_height, msg_index, receiver, amount })))
+                Ok(Some(ContractEvent::PegIn(PegInEvent {
+                    block_height,
+                    msg_index,
+                    receiver,
+                    amount,
+                })))
             }
             Some("peg_out") => {
                 let sender = attrs
                     .get("sender")
-                    .ok_or_else(|| ClientError::EventError("Missing sender".to_string()))?
+                    .ok_or_else(|| anyhow!("Missing sender"))?
                     .clone();
                 let btc_address = attrs
                     .get("btc_address")
-                    .ok_or_else(|| ClientError::EventError("Missing btc_address".to_string()))?
+                    .ok_or_else(|| anyhow!("Missing btc_address"))?
                     .clone();
                 let operator_btc_pk = attrs
                     .get("operator_btc_pk")
-                    .ok_or_else(|| ClientError::EventError("Missing operator_btc_pk".to_string()))?
+                    .ok_or_else(|| anyhow!("Missing operator_btc_pk"))?
                     .clone();
                 Ok(Some(ContractEvent::PegOut(PegOutEvent {
                     block_height,
