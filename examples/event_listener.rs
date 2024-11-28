@@ -21,7 +21,9 @@ async fn main() -> Result<()> {
     let contract_address = "fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux";
     let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
 
-    let contract = AccountId::from_str(contract_address).unwrap();
+    let contract = AccountId::from_str(contract_address)
+        .map_err(|e| cosmwasm_client_rs::ClientError::ParseError(format!("Invalid contract address: {}", e)))?;
+
     let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract)).await?;
 
     // Create and start event listener

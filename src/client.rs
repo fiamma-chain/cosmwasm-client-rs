@@ -45,7 +45,7 @@ impl CosmWasmClient {
             }
         });
 
-        let wallet = Wallet::new(private_key);
+        let wallet = Wallet::new(private_key)?;
 
         Ok(Self {
             grpc_url: grpc_url.to_string(),

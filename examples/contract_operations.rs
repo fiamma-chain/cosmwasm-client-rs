@@ -41,12 +41,12 @@ async fn main() -> Result<()> {
 
     // TODO: Get the contract address from the instantiate event
     // After getting the contract address, create a new client with the correct contract address
-    let contract =
-        AccountId::from_str("fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux")
-            .unwrap();
+    let contract = AccountId::from_str("fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux")
+        .map_err(|e| cosmwasm_client_rs::ClientError::ParseError(format!("Invalid contract address: {}", e)))?;
+
     let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract)).await?;
 
-    // // Test 2: Peg-in some tokens
+    // Test 2: Peg-in some tokens
     let recipient = "fiamma1ufs3tlq4umljk0qfe8k5ya0x6hpavn89g6kfpy";
     let amount = 22_000_000;
     println!("Performing peg-in...");
@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
     // Wait for 3 seconds
     time::sleep(time::Duration::from_secs(3)).await;
 
-    // // Test 3: Peg-out some tokens
+    // Test 3: Peg-out some tokens
     let btc_address = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
     let amount = 2200_000;
     let operator_btc_pk = "02a8513d9931896d5d3afc8063148db75d8851fd1fc41b1098ba2a6a766db563d4";

@@ -152,7 +152,8 @@ impl CosmWasmClient {
             .map_err(|e| ClientError::Other(e.to_string()))?;
 
         let response = self.broadcast_tx(tx_bytes).await?;
-        let tx_response = response.tx_response.unwrap();
+        let tx_response = response.tx_response
+            .ok_or_else(|| ClientError::Other("Transaction response is empty".to_string()))?;
 
         if tx_response.code != 0 {
             return Err(ClientError::Other(tx_response.raw_log));
