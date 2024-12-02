@@ -1,16 +1,24 @@
-use crate::client::CosmWasmClient;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Context};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tendermint::abci;
-use tendermint_rpc::event::EventData;
+use tendermint::block::Height;
+use tendermint_rpc::SubscriptionClient;
+use tendermint_rpc::{WebSocketClient, Client, event::EventData};
 use tendermint_rpc::query::{EventType, Query};
 use tokio::sync::{broadcast, mpsc};
 use tracing;
 
-const EVENT_PROCESSOR_SIZE: usize = 5000;
+const EVENT_PROCESSOR_SIZE: usize = 1000;
 
-/// Represents a token-related event with type, amount, and optional from/to addresses
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct PegInEvent {
+    pub block_height: u64,
+    pub msg_index: u32,
+    pub receiver: String,
+    pub amount: u128,
+}
+
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct PegOutEvent {
     pub block_height: u64,
@@ -21,23 +29,14 @@ pub struct PegOutEvent {
     pub amount: u128,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct PegInEvent {
-    pub block_height: u64,
-    pub msg_index: u32,
-    pub receiver: String,
-    pub amount: u128,
-}
-
 #[derive(Debug, Clone)]
 pub enum ContractEvent {
     PegIn(PegInEvent),
     PegOut(PegOutEvent),
 }
 
-/// Event listener that processes blockchain events sequentially
 pub struct EventListener {
-    client: CosmWasmClient,
+    ws_client: WebSocketClient,
     latest_height_tx: broadcast::Sender<u64>,
     latest_height_rx: broadcast::Receiver<u64>,
     last_processed_height: u64,
@@ -47,30 +46,69 @@ pub struct EventListener {
 
 impl EventListener {
     /// Creates a new EventListener instance
-    pub fn new(
-        client: CosmWasmClient,
+    pub async fn new(
+        ws_url: &str,
         event_sender: mpsc::Sender<ContractEvent>,
         contract_address: String,
-    ) -> Self {
+        last_processed_height: u64,
+    ) -> anyhow::Result<Self> {
+        let ws_client = Self::connect(ws_url).await?;
         let (latest_height_tx, latest_height_rx) = broadcast::channel(EVENT_PROCESSOR_SIZE);
-        Self {
-            client,
+        
+        Ok(Self {
+            ws_client,
             latest_height_tx,
             latest_height_rx,
-            last_processed_height: 0,
+            last_processed_height,
             event_sender,
             contract_address,
-        }
+        })
+    }
+
+    /// Connect to WebSocket endpoint
+    async fn connect(ws_url: &str) -> anyhow::Result<WebSocketClient> {
+        let (ws_client, driver) = WebSocketClient::new(ws_url)
+            .await
+            .context("Failed to create WebSocket client")?;
+
+        // Spawn WebSocket driver in a separate task
+        tokio::spawn(async move {
+            if let Err(e) = driver.run().await {
+                tracing::error!("WebSocket client driver error: {}", e);
+            }
+        });
+
+        Ok(ws_client)
+    }
+
+    /// Get events for a specific block height
+    pub async fn get_block_events(&self, height: u64) -> anyhow::Result<Vec<Vec<abci::Event>>> {
+        let height = Height::try_from(height).context("Failed to convert height to u64")?;
+
+        let block_results = self
+            .ws_client
+            .block_results(height)
+            .await
+            .context("Failed to get block results")?;
+
+        let events = block_results
+            .txs_results
+            .unwrap_or_default()
+            .into_iter()
+            .map(|tx_result| tx_result.events)
+            .collect();
+
+        Ok(events)
     }
 
     /// Starts the event subscription and processing
     pub async fn start(&mut self) -> anyhow::Result<()> {
         // Start WebSocket subscription in a separate task
         let height_tx = self.latest_height_tx.clone();
-        let client = self.client.clone();
+        let ws_client = self.ws_client.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = Self::subscribe_to_events(client, height_tx).await {
+            if let Err(e) = Self::subscribe_to_events(ws_client, height_tx).await {
                 tracing::error!("Event subscription error: {}", e);
             }
         });
@@ -81,12 +119,12 @@ impl EventListener {
 
     /// Subscribe to new block events via WebSocket
     async fn subscribe_to_events(
-        client: CosmWasmClient,
+        ws_client: WebSocketClient,
         height_tx: broadcast::Sender<u64>,
     ) -> anyhow::Result<()> {
         tracing::info!("Starting WebSocket subscription for new events");
         let query = Query::from(EventType::NewBlock);
-        let mut event_stream = client.subscribe_events(query).await?;
+        let mut event_stream = ws_client.subscribe(query).await?;
 
         while let Some(event_result) = event_stream.next().await {
             match event_result {
@@ -147,7 +185,7 @@ impl EventListener {
 
     /// Process events in a single block
     async fn process_block(&self, height: u64) -> anyhow::Result<()> {
-        let block_events = self.client.get_block_events(height).await?;
+        let block_events = self.get_block_events(height).await?;
         for events in block_events {
             for event in events {
                 if let Some(contract_event) = self.parse_contract_event(height, &event)? {

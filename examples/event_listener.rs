@@ -1,10 +1,8 @@
 use anyhow;
-use cosmrs::AccountId;
 use cosmwasm_client_rs::{
     events::{ContractEvent, PegInEvent, PegOutEvent},
-    CosmWasmClient, EventListener,
+    EventListener,
 };
-use std::str::FromStr;
 use tokio::sync::mpsc;
 use tracing_subscriber::fmt;
 
@@ -16,21 +14,16 @@ async fn main() -> anyhow::Result<()> {
     // Create event channel with sufficient buffer
     let (tx, mut rx) = mpsc::channel::<ContractEvent>(1000);
 
-    // Initialize client
-    let grpc_url = "http://localhost:9090";
+    // Initialize WebSocket client and event listener
     let ws_url = "ws://localhost:26657/websocket";
     let contract_address = "fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux";
-    let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
-
-    let contract = AccountId::from_str(contract_address)
-        .map_err(|e| anyhow::anyhow!("Failed to parse contract address: {}", e))?;
-
-    let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract))
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
-
-    // Create and start event listener
-    let mut event_listener = EventListener::new(client.clone(), tx, contract_address.to_string());
+    
+    let mut event_listener = EventListener::new(
+        ws_url,
+        tx,
+        contract_address.to_string(),
+        0, // Start from block height 0
+    ).await?;
 
     // Start event listening in background task
     tokio::spawn(async move {

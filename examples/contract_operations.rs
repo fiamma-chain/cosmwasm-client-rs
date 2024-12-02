@@ -12,7 +12,6 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize client with empty contract address (we don't have it yet)
     let grpc_url = "http://localhost:9090";
-    let ws_url = "ws://localhost:26657/websocket";
     let private_key = "7ae58f95b0f15c999f77488fa0fbebbd4acbe2d12948dcd1729b07ee8f3051e8";
     // let private_key = "e18716358226488b7e49e3fb8f1af9a2bbbc16be57db54cbd4cd6e17a69f97c7";
 
@@ -46,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
         AccountId::from_str("fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux")
             .map_err(|e| anyhow::anyhow!("Failed to parse contract address: {}", e))?;
 
-    let client = CosmWasmClient::new(grpc_url, ws_url, private_key, Some(contract))
+    let client = CosmWasmClient::new(grpc_url,private_key, Some(contract))
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
 
