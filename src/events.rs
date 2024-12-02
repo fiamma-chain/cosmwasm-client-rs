@@ -3,17 +3,18 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tendermint::abci;
 use tendermint::block::Height;
+use sha2::{Digest, Sha256};
 use tendermint_rpc::SubscriptionClient;
 use tendermint_rpc::{WebSocketClient, Client, event::EventData};
 use tendermint_rpc::query::{EventType, Query};
 use tokio::sync::{broadcast, mpsc};
 use tracing;
+use hex;
 
 const EVENT_PROCESSOR_SIZE: usize = 1000;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct PegInEvent {
-    pub block_height: u64,
     pub msg_index: u32,
     pub receiver: String,
     pub amount: u128,
@@ -21,7 +22,6 @@ pub struct PegInEvent {
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct PegOutEvent {
-    pub block_height: u64,
     pub msg_index: u32,
     pub sender: String,
     pub btc_address: String,
@@ -35,12 +35,18 @@ pub enum ContractEvent {
     PegOut(PegOutEvent),
 }
 
+#[derive(Debug)]
+pub struct BlockEvents {
+    pub height: u64,
+    pub events: Vec<(String, ContractEvent)>, // (tx_hash, event)
+}
+
 pub struct EventListener {
     ws_client: WebSocketClient,
     latest_height_tx: broadcast::Sender<u64>,
     latest_height_rx: broadcast::Receiver<u64>,
     last_processed_height: u64,
-    event_sender: mpsc::Sender<ContractEvent>,
+    event_sender: mpsc::Sender<BlockEvents>,
     contract_address: String,
 }
 
@@ -48,7 +54,7 @@ impl EventListener {
     /// Creates a new EventListener instance
     pub async fn new(
         ws_url: &str,
-        event_sender: mpsc::Sender<ContractEvent>,
+        event_sender: mpsc::Sender<BlockEvents>,
         contract_address: String,
         last_processed_height: u64,
     ) -> anyhow::Result<Self> {
@@ -82,23 +88,64 @@ impl EventListener {
     }
 
     /// Get events for a specific block height
-    pub async fn get_block_events(&self, height: u64) -> anyhow::Result<Vec<Vec<abci::Event>>> {
+    pub async fn get_block_events(&self, height: u64) -> anyhow::Result<Vec<(String, Vec<abci::Event>)>> {
         let height = Height::try_from(height).context("Failed to convert height to u64")?;
 
-        let block_results = self
-            .ws_client
-            .block_results(height)
-            .await
-            .context("Failed to get block results")?;
+        // Get both block and block results
+        let block = self.ws_client.block(height).await?;
+        let block_results = self.ws_client.block_results(height).await?;
 
-        let events = block_results
-            .txs_results
-            .unwrap_or_default()
-            .into_iter()
-            .map(|tx_result| tx_result.events)
-            .collect();
+        let mut tx_events = Vec::new();
+        
+        // Get transactions from block
+        if let Some(tx_results) = block_results.txs_results {
+            let txs = block.block.data;
+            
+            // Ensure we have matching number of transactions and results
+            if txs.len() == tx_results.len() {
+                for (i, tx) in txs.iter().enumerate() {
+                    if let Some(result) = tx_results.get(i) {
+                        // Calculate transaction hash 
+                        let tx_hash = calculate_tx_hash(tx);
+                        tx_events.push((
+                            tx_hash,
+                            result.events.clone(),
+                        ));
+                    }
+                }
+            }
+        }
 
-        Ok(events)
+        Ok(tx_events)
+    }
+
+    /// Process events for a specific block height
+    async fn process_block(&self, height: u64) -> anyhow::Result<()> {
+        let tx_events = self.get_block_events(height).await?;
+        let mut contract_events = Vec::new();
+
+        // Collect all contract events from this block
+        for (tx_hash, events) in tx_events {
+            for event in events {
+                if let Some(contract_event) = self.parse_contract_event(&event)? {
+                    contract_events.push((tx_hash.clone(), contract_event));
+                }
+            }
+        }
+
+        // If we have any events, send them as a batch
+        if !contract_events.is_empty() {
+            let block_events = BlockEvents {
+                height,
+                events: contract_events,
+            };
+            self.event_sender
+                .send(block_events)
+                .await
+                .map_err(|e| anyhow!("Failed to send block events to channel: {}", e))?;
+        }
+
+        Ok(())
     }
 
     /// Starts the event subscription and processing
@@ -183,27 +230,9 @@ impl EventListener {
         Ok(())
     }
 
-    /// Process events in a single block
-    async fn process_block(&self, height: u64) -> anyhow::Result<()> {
-        let block_events = self.get_block_events(height).await?;
-        for events in block_events {
-            for event in events {
-                if let Some(contract_event) = self.parse_contract_event(height, &event)? {
-                    self.event_sender
-                        .send(contract_event)
-                        .await
-                        .map_err(|e| anyhow!("Failed to send event to channel: {}", e))?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Parse blockchain events into ContractEvent
     fn parse_contract_event(
         &self,
-        block_height: u64,
         event: &abci::Event,
     ) -> Result<Option<ContractEvent>> {
         if event.kind != "wasm" {
@@ -247,7 +276,6 @@ impl EventListener {
                     .ok_or_else(|| anyhow!("Missing receiver"))?
                     .clone();
                 Ok(Some(ContractEvent::PegIn(PegInEvent {
-                    block_height,
                     msg_index,
                     receiver,
                     amount,
@@ -267,7 +295,6 @@ impl EventListener {
                     .ok_or_else(|| anyhow!("Missing operator_btc_pk"))?
                     .clone();
                 Ok(Some(ContractEvent::PegOut(PegOutEvent {
-                    block_height,
                     msg_index,
                     sender,
                     btc_address,
@@ -279,3 +306,13 @@ impl EventListener {
         }
     }
 }
+
+
+// Calculate transaction hash
+  fn calculate_tx_hash(tx: &[u8]) -> String {   
+    let mut hasher = Sha256::new();
+    hasher.update(tx);
+    let hash = hasher.finalize();
+    let tx_hash = hex::encode(hash);
+    tx_hash
+  }

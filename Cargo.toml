@@ -43,6 +43,7 @@ cosmwasm-std = { version = "2.1.4", default-features = false, features = [
     "cosmwasm_2_0",
 ] }
 cosmwasm-schema = "2.1.4"
+sha2 = "0.10.6"
 
 [build-dependencies]
 tonic-build = "0.12.3"

@@ -1,6 +1,6 @@
 use anyhow;
 use cosmwasm_client_rs::{
-    events::{ContractEvent, PegInEvent, PegOutEvent},
+    events::{BlockEvents, ContractEvent, PegInEvent, PegOutEvent},
     EventListener,
 };
 use tokio::sync::mpsc;
@@ -12,9 +12,9 @@ async fn main() -> anyhow::Result<()> {
     fmt::init();
 
     // Create event channel with sufficient buffer
-    let (tx, mut rx) = mpsc::channel::<ContractEvent>(1000);
+    let (tx, mut rx) = mpsc::channel::<BlockEvents>(1000);
 
-    // Initialize WebSocket client and event listener
+    // Initialize event listener
     let ws_url = "ws://localhost:26657/websocket";
     let contract_address = "fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux";
     
@@ -33,39 +33,41 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Process events in main task
-    while let Some(event) = rx.recv().await {
-        match event {
-            ContractEvent::PegIn(PegInEvent {
-                block_height,
-                msg_index,
-                receiver,
-                amount,
-            }) => {
-                tracing::info!(
-                    "Received PegIn event block_height: {} msg_index: {} receiver: {} amount: {}",
-                    block_height,
+    while let Some(block_events) = rx.recv().await {
+        tracing::info!("Processing events from block {}", block_events.height);
+        
+        for (tx_hash, event) in block_events.events {
+            match event {
+                ContractEvent::PegIn(PegInEvent {
                     msg_index,
                     receiver,
-                    amount
-                );
-            }
-            ContractEvent::PegOut(PegOutEvent {
-                block_height,
-                msg_index,
-                sender,
-                btc_address,
-                operator_btc_pk,
-                amount,
-            }) => {
-                tracing::info!(
-                    "Received PegOut event block_height: {} msg_index: {} sender: {} btc_address: {} operator_btc_pk: {} amount: {}",
-                    block_height,
+                    amount,
+                }) => {
+                    tracing::info!(
+                        "Received PegIn event tx_hash: {} msg_index: {} receiver: {} amount: {}",
+                        tx_hash,
+                        msg_index,
+                        receiver,
+                        amount
+                    );
+                }
+                ContractEvent::PegOut(PegOutEvent {
                     msg_index,
                     sender,
                     btc_address,
                     operator_btc_pk,
-                    amount
-                );
+                    amount,
+                }) => {
+                    tracing::info!(
+                        "Received PegOut event tx_hash: {} msg_index: {} sender: {} btc_address: {} operator_btc_pk: {} amount: {}",
+                        tx_hash,
+                        msg_index,
+                        sender,
+                        btc_address,
+                        operator_btc_pk,
+                        amount
+                    );
+                }
             }
         }
     }
