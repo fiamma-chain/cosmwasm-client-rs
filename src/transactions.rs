@@ -12,33 +12,70 @@ use serde::Serialize;
 use std::str::FromStr;
 
 #[cw_serde]
-pub struct InstantiateMsg {
-    /// denom is the denomination of the bridged asset
-    pub denom: String,
-    /// operators is the list of operators
-    pub operators: Vec<Operator>,
-}
-
-#[cw_serde]
 pub struct Operator {
     /// btc_pk is the BTC PK of the operator
     pub btc_pk: String,
     /// address is the Cosmos address of the operator
-    pub address: String,
+    pub address: Addr,
     // TODO: self-stake
     // TODO: more fields
+}
+#[cw_serde]
+pub struct InstantiateMsg {
+    /// cw20_code_id is the code id of the wrapped BTC CW20 token contract
+    pub cw20_code_id: u64,
+    /// denom is the denomination of the bridged asset
+    pub denom: String,
+    /// btc_confirmation_depth is the number of blocks to confirm on BTC
+    pub btc_confirmation_depth: u32,
+    /// operators is the list of operators
+    pub operators: Vec<Operator>,
+}
+
+impl Default for InstantiateMsg {
+    fn default() -> Self {
+        Self {
+            cw20_code_id: 0,
+            denom: "bbtc".to_string(),
+            btc_confirmation_depth: 0,
+            operators: vec![Operator {
+                btc_pk: "mock_btc_pk".to_string(),
+                address: Addr::unchecked("mock_operator"),
+            }],
+        }
+    }
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    /// PegIn is the message for peg in requests
     PegIn {
+        /// receiver_address is the Cosmos address of the receiver
+        /// who receives the $bBTC tokens
         receiver_address: Addr,
+        /// amount is the amount of $BTC to peg in
         amount: Uint128,
+        /// btc_block_hash is the block hash of the Bitcoin block
+        /// that contains the peg out transaction
+        btc_block_hash: String,
+        /// pegin_tx is the peg in transaction in hex format
+        pegin_tx: String,
+        /// pegin_tx_idx is the index of the peg in transaction in the Bitcoin block
+        pegin_tx_idx: u32,
+        /// pegin_tx_merkle_proof is the merkle proof of the peg in transaction in hex format
+        pegin_tx_merkle_proof: Vec<String>,
+        // TODO: more fields, e.g., pre-signed txs
     },
+    /// PegOut is the message for peg out requests
     PegOut {
+        /// btc_address is the Bitcoin address for receiving the
+        /// pegged out $BTC
         btc_address: String,
+        /// amount is the amount of $bBTC to peg out
         amount: Uint128,
+        /// operator_btc_pk is the Bitcoin public key of the operator
         operator_btc_pk: String,
+        // TODO: more fields
     },
 }
 
@@ -52,6 +89,8 @@ impl CosmWasmClient {
         label: &str,
     ) -> anyhow::Result<String> {
         let msg = InstantiateMsg {
+            cw20_code_id : 0,
+            btc_confirmation_depth: 6,
             denom: denom.to_string(),
             operators,
         };
@@ -60,10 +99,14 @@ impl CosmWasmClient {
     }
 
     /// Mints tokens to the specified recipient
-    pub async fn peg_in(&self, recipient: &str, amount: u128) -> anyhow::Result<String> {
+    pub async fn peg_in(&self, recipient: &str, amount: u128, block_hash: &str, pegin_tx: &str, pegin_tx_idx: u32, pegin_tx_merkle_proof: Vec<String>) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegIn {
             receiver_address: Addr::unchecked(recipient),
             amount: Uint128::from(amount),
+            btc_block_hash: block_hash.to_string(),
+            pegin_tx: pegin_tx.to_string(),
+            pegin_tx_idx,
+            pegin_tx_merkle_proof,
         };
 
         self.execute_contract(&msg).await

@@ -22,7 +22,7 @@ pub struct CosmWasmClient {
 }
 
 impl CosmWasmClient {
-    pub async fn new(
+    pub fn new(
         grpc_url: &str,
         private_key: &str,
         contract: &str,

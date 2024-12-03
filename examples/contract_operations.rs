@@ -44,14 +44,13 @@ async fn main() -> anyhow::Result<()> {
     let contract = "fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux";
 
     let client = CosmWasmClient::new(grpc_url, private_key, contract)
-        .await
         .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
 
     // Test 2: Peg-in some tokens
     let recipient = "fiamma1ufs3tlq4umljk0qfe8k5ya0x6hpavn89g6kfpy";
     let amount = 33_000_000;
     println!("Performing peg-in...");
-    let tx_hash = client.peg_in(recipient, amount).await?;
+    let tx_hash = client.peg_in(recipient, amount, "", "", 0, vec![]).await?;
     println!("Peg-in completed. Tx hash: {}", tx_hash);
 
     // Wait for 3 seconds
