@@ -74,7 +74,7 @@ pub enum ExecuteMsg {
         /// amount is the amount of $bBTC to peg out
         amount: Uint128,
         /// operator_btc_pk is the Bitcoin public key of the operator
-        operator_btc_pk: String,
+        operator_id: u32,
         // TODO: more fields
     },
 }
@@ -125,12 +125,12 @@ impl CosmWasmClient {
         &self,
         btc_address: &str,
         amount: u128,
-        operator_btc_pk: &str,
+        operator_id: u32,
     ) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegOut {
             btc_address: btc_address.to_string(),
             amount: Uint128::from(amount),
-            operator_btc_pk: operator_btc_pk.to_string(),
+            operator_id,
         };
 
         self.execute_contract(&msg).await

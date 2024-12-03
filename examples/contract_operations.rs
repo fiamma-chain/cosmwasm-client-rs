@@ -57,9 +57,9 @@ async fn main() -> anyhow::Result<()> {
     // Test 3: Peg-out some tokens
     let btc_address = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
     let amount = 3300_000;
-    let operator_btc_pk = "02a8513d9931896d5d3afc8063148db75d8851fd1fc41b1098ba2a6a766db563d4";
+    let operator_id = 0;
     println!("Performing peg-out...");
-    let tx_hash = client.peg_out(btc_address, amount, operator_btc_pk).await?;
+    let tx_hash = client.peg_out(btc_address, amount, operator_id).await?;
     println!("Peg-out completed. Tx hash: {}", tx_hash);
 
     Ok(())
