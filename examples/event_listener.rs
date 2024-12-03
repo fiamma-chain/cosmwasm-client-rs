@@ -56,16 +56,16 @@ async fn main() -> anyhow::Result<()> {
                     msg_index,
                     sender,
                     btc_address,
-                    operator_btc_pk,
+                    operator_id,
                     amount,
                 }) => {
                     tracing::info!(
-                        "Received PegOut event tx_hash: {} msg_index: {} sender: {} btc_address: {} operator_btc_pk: {} amount: {}",
+                        "Received PegOut event tx_hash: {} msg_index: {} sender: {} btc_address: {} operator_id: {} amount: {}",
                         tx_hash,
                         msg_index,
                         sender,
                         btc_address,
-                        operator_btc_pk,
+                        operator_id,
                         amount
                     );
                 }
