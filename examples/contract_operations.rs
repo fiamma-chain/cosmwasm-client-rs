@@ -41,11 +41,9 @@ async fn main() -> anyhow::Result<()> {
 
     // TODO: Get the contract address from the instantiate event
     // After getting the contract address, create a new client with the correct contract address
-    let contract =
-        AccountId::from_str("fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux")
-            .map_err(|e| anyhow::anyhow!("Failed to parse contract address: {}", e))?;
+    let contract = "fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux";
 
-    let client = CosmWasmClient::new(grpc_url,private_key, Some(contract))
+    let client = CosmWasmClient::new(grpc_url, private_key, contract)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
 

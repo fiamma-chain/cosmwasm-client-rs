@@ -55,7 +55,7 @@ impl EventListener {
     pub async fn new(
         ws_url: &str,
         event_sender: mpsc::Sender<BlockEvents>,
-        contract_address: String,
+        contract_address: &str,
         last_processed_height: u64,
     ) -> anyhow::Result<Self> {
         let ws_client = Self::connect(ws_url).await?;
@@ -67,7 +67,7 @@ impl EventListener {
             latest_height_rx,
             last_processed_height,
             event_sender,
-            contract_address,
+            contract_address: contract_address.to_string(),
         })
     }
 

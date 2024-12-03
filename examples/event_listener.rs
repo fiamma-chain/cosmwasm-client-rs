@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let mut event_listener = EventListener::new(
         ws_url,
         tx,
-        contract_address.to_string(),
+        contract_address,
         0, // Start from block height 0
     ).await?;
 

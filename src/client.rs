@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use anyhow::Context;
 use cosmrs::AccountId;
 use prost::Message;
@@ -23,17 +25,18 @@ impl CosmWasmClient {
     pub async fn new(
         grpc_url: &str,
         private_key: &str,
-        contract: Option<AccountId>,
+        contract: &str,
     ) -> anyhow::Result<Self> {
-
         let wallet = Wallet::new(private_key)?;
+        let contract = AccountId::from_str(contract).map_err(|e| anyhow::anyhow!(e));
 
         Ok(Self {
             grpc_url: grpc_url.to_string(),
             wallet,
-            contract,
+            contract: Some(contract?),
         })
     }
+
 
     pub async fn broadcast_tx(&self, tx_bytes: Vec<u8>) -> anyhow::Result<BroadcastTxResponse> {
         let mut client = ServiceClient::connect(self.grpc_url.clone())
