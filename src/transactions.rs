@@ -89,7 +89,7 @@ impl CosmWasmClient {
         label: &str,
     ) -> anyhow::Result<String> {
         let msg = InstantiateMsg {
-            cw20_code_id : 0,
+            cw20_code_id: 0,
             btc_confirmation_depth: 6,
             denom: denom.to_string(),
             operators,
@@ -99,7 +99,15 @@ impl CosmWasmClient {
     }
 
     /// Mints tokens to the specified recipient
-    pub async fn peg_in(&self, recipient: &str, amount: u128, block_hash: &str, pegin_tx: &str, pegin_tx_idx: u32, pegin_tx_merkle_proof: Vec<String>) -> anyhow::Result<String> {
+    pub async fn peg_in(
+        &self,
+        recipient: &str,
+        amount: u128,
+        block_hash: &str,
+        pegin_tx: &str,
+        pegin_tx_idx: u32,
+        pegin_tx_merkle_proof: Vec<String>,
+    ) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegIn {
             receiver_address: Addr::unchecked(recipient),
             amount: Uint128::from(amount),

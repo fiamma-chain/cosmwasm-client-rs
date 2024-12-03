@@ -17,13 +17,14 @@ async fn main() -> anyhow::Result<()> {
     // Initialize event listener
     let ws_url = "ws://localhost:26657/websocket";
     let contract_address = "fiamma1xsmqvl8lqr2uwl50aetu0572rss9hrza5kddpfj9ky3jq80fv2tsk3g4ux";
-    
+
     let mut event_listener = EventListener::new(
         ws_url,
         tx,
         contract_address,
         0, // Start from block height 0
-    ).await?;
+    )
+    .await?;
 
     // Start event listening in background task
     tokio::spawn(async move {
@@ -35,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     // Process events in main task
     while let Some(block_events) = rx.recv().await {
         tracing::info!("Processing events from block {}", block_events.height);
-        
+
         for (tx_hash, event) in block_events.events {
             match event {
                 ContractEvent::PegIn(PegInEvent {

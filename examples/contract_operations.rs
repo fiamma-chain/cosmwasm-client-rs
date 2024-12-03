@@ -1,7 +1,5 @@
 use anyhow;
-use cosmrs::AccountId;
 use cosmwasm_client_rs::CosmWasmClient;
-use std::str::FromStr;
 use tokio::time;
 use tracing_subscriber::fmt;
 

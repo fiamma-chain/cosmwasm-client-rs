@@ -1,15 +1,15 @@
-use anyhow::{anyhow, Result, Context};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
+use hex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tendermint::abci;
 use tendermint::block::Height;
-use sha2::{Digest, Sha256};
-use tendermint_rpc::SubscriptionClient;
-use tendermint_rpc::{WebSocketClient, Client, event::EventData};
 use tendermint_rpc::query::{EventType, Query};
+use tendermint_rpc::SubscriptionClient;
+use tendermint_rpc::{event::EventData, Client, WebSocketClient};
 use tokio::sync::{broadcast, mpsc};
 use tracing;
-use hex;
 
 const EVENT_PROCESSOR_SIZE: usize = 1000;
 
@@ -60,7 +60,7 @@ impl EventListener {
     ) -> anyhow::Result<Self> {
         let ws_client = Self::connect(ws_url).await?;
         let (latest_height_tx, latest_height_rx) = broadcast::channel(EVENT_PROCESSOR_SIZE);
-        
+
         Ok(Self {
             ws_client,
             latest_height_tx,
@@ -88,7 +88,10 @@ impl EventListener {
     }
 
     /// Get events for a specific block height
-    pub async fn get_block_events(&self, height: u64) -> anyhow::Result<Vec<(String, Vec<abci::Event>)>> {
+    pub async fn get_block_events(
+        &self,
+        height: u64,
+    ) -> anyhow::Result<Vec<(String, Vec<abci::Event>)>> {
         let height = Height::try_from(height).context("Failed to convert height to u64")?;
 
         // Get both block and block results
@@ -96,21 +99,18 @@ impl EventListener {
         let block_results = self.ws_client.block_results(height).await?;
 
         let mut tx_events = Vec::new();
-        
+
         // Get transactions from block
         if let Some(tx_results) = block_results.txs_results {
             let txs = block.block.data;
-            
+
             // Ensure we have matching number of transactions and results
             if txs.len() == tx_results.len() {
                 for (i, tx) in txs.iter().enumerate() {
                     if let Some(result) = tx_results.get(i) {
-                        // Calculate transaction hash 
+                        // Calculate transaction hash
                         let tx_hash = calculate_tx_hash(tx);
-                        tx_events.push((
-                            tx_hash,
-                            result.events.clone(),
-                        ));
+                        tx_events.push((tx_hash, result.events.clone()));
                     }
                 }
             }
@@ -231,10 +231,7 @@ impl EventListener {
     }
 
     /// Parse blockchain events into ContractEvent
-    fn parse_contract_event(
-        &self,
-        event: &abci::Event,
-    ) -> Result<Option<ContractEvent>> {
+    fn parse_contract_event(&self, event: &abci::Event) -> Result<Option<ContractEvent>> {
         if event.kind != "wasm" {
             return Ok(None);
         }
@@ -307,12 +304,11 @@ impl EventListener {
     }
 }
 
-
 // Calculate transaction hash
-  fn calculate_tx_hash(tx: &[u8]) -> String {   
+fn calculate_tx_hash(tx: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(tx);
     let hash = hasher.finalize();
     let tx_hash = hex::encode(hash);
     tx_hash
-  }
+}
