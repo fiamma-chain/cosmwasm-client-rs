@@ -33,7 +33,7 @@ base64 = "0.21.2"
 bytes = "1.4.0"
 tokio-stream = "0.1.14"
 tokio-util = "0.7.8"
-tonic = { version = "0.12.3", features = ["transport", "codegen"] }
+tonic = { version = "0.12.3", features = ["default", "prost", "tls", "tls-roots", "tls-webpki-roots"] }
 hex = "0.4.3"
 cosmwasm-std = { version = "2.1.4", default-features = false, features = [
     "std",

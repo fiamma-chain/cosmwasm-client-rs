@@ -2,8 +2,6 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use cosmrs::AccountId;
-use prost::Message;
-
 use cosmos_sdk_proto::cosmos::{
     auth::v1beta1::{query_client::QueryClient, BaseAccount, QueryAccountRequest},
     tx::v1beta1::{
@@ -12,6 +10,7 @@ use cosmos_sdk_proto::cosmos::{
     },
 };
 
+use crate::chain::ChainConfig;
 use crate::wallet::Wallet;
 
 #[derive(Clone)]
@@ -19,17 +18,24 @@ pub struct CosmWasmClient {
     grpc_url: String,
     pub wallet: Wallet,
     pub contract: Option<AccountId>,
+    pub config: ChainConfig,
 }
 
 impl CosmWasmClient {
-    pub fn new(grpc_url: &str, private_key: &str, contract: &str) -> anyhow::Result<Self> {
-        let wallet = Wallet::new(private_key)?;
+    pub fn new(
+        grpc_url: &str,
+        private_key: &str,
+        contract: &str,
+        config: ChainConfig,
+    ) -> anyhow::Result<Self> {
+        let wallet = Wallet::new(private_key, &config.account_prefix)?;
         let contract = AccountId::from_str(contract).map_err(|e| anyhow::anyhow!(e));
 
         Ok(Self {
             grpc_url: grpc_url.to_string(),
             wallet,
             contract: Some(contract?),
+            config,
         })
     }
 
@@ -56,17 +62,19 @@ impl CosmWasmClient {
             .await
             .context("Failed to connect to gRPC service")?;
 
-        let response = client
+        let resp = client
             .account(QueryAccountRequest { address })
             .await
-            .context("Failed to get account")?;
-
-        let account = response
-            .into_inner()
-            .account
+            .context("Failed to query account information")?;
+        
+        let account_info = resp.get_ref().clone().account
             .ok_or_else(|| anyhow::anyhow!("No account data found"))?;
-
-        BaseAccount::decode(account.value.as_slice()).context("Failed to decode account info")
+            
+        let account = account_info
+            .to_msg::<BaseAccount>()
+            .context("Failed to convert account info to BaseAccount")?;
+            
+        Ok(account)
     }
 
     pub async fn get_tx(&self, hash: &str) -> anyhow::Result<GetTxResponse> {

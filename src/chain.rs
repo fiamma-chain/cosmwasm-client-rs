@@ -1,6 +1,26 @@
-pub const ACCOUNT_PREFIX: &str = "fiamma";
-pub const CHAIN_ID: &str = "fiamma-testnet-1";
-pub const DENOM: &str = "ufia";
+#[derive(Debug, Clone)]
+pub struct ChainConfig {
+    pub account_prefix: String,
+    pub chain_id: String,
+    pub denom: String,
+    pub gas_limit: u64,
+    pub fee_amount: u128,
+}
 
-pub const GAS_LIMIT: u64 = 1000000;
-pub const FEE_AMOUNT: u128 = 200;
+impl ChainConfig {
+    pub fn new(
+        account_prefix: String,
+        chain_id: String,
+        denom: String,
+        gas_limit: u64,
+        fee_amount: u128,
+    ) -> Self {
+        Self {
+            account_prefix,
+            chain_id,
+            denom,
+            gas_limit,
+            fee_amount,
+        }
+    }
+}

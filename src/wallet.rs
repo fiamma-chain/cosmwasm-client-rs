@@ -1,4 +1,3 @@
-use crate::chain::ACCOUNT_PREFIX;
 use anyhow::Context;
 use cosmrs::{
     crypto::{secp256k1::SigningKey, PublicKey},
@@ -14,7 +13,7 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    pub fn new(private_key: &str) -> anyhow::Result<Self> {
+    pub fn new(private_key: &str, account_prefix: &str) -> anyhow::Result<Self> {
         let private_key = hex::decode(private_key).context("Invalid private key hex format")?;
 
         let signing_key = SigningKey::from_slice(&private_key)
@@ -22,7 +21,7 @@ impl Wallet {
 
         let public_key = signing_key.public_key();
         let account_id = public_key
-            .account_id(ACCOUNT_PREFIX)
+            .account_id(account_prefix)
             .map_err(|e| anyhow::anyhow!("Failed to generate account ID: {e}"))?;
 
         Ok(Self {

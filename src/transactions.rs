@@ -1,4 +1,3 @@
-use crate::chain::{CHAIN_ID, DENOM, FEE_AMOUNT, GAS_LIMIT};
 use crate::client::CosmWasmClient;
 use anyhow::Context;
 use cosmos_sdk_proto::traits::Message;
@@ -74,7 +73,7 @@ pub enum ExecuteMsg {
         /// amount is the amount of $bBTC to peg out
         amount: Uint128,
         /// operator_btc_pk is the Bitcoin public key of the operator
-        operator_id: u32,
+        operator_btc_pk: String,
         // TODO: more fields
     },
 }
@@ -125,12 +124,12 @@ impl CosmWasmClient {
         &self,
         btc_address: &str,
         amount: u128,
-        operator_id: u32,
+        operator_btc_pk: &str,
     ) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegOut {
             btc_address: btc_address.to_string(),
             amount: Uint128::from(amount),
-            operator_id,
+            operator_btc_pk: operator_btc_pk.to_string(),
         };
 
         self.execute_contract(&msg).await
@@ -225,13 +224,13 @@ impl CosmWasmClient {
         let account_number = account.account_number;
         let sequence = account.sequence;
 
-        let chain_id = CHAIN_ID.parse().context("Invalid chain ID")?;
+        let chain_id = self.config.chain_id.parse().context("Invalid chain ID")?;
 
         let fee = Coin {
-            amount: FEE_AMOUNT,
-            denom: Denom::from_str(DENOM).map_err(|e| anyhow::anyhow!("Invalid denom: {}", e))?,
+            amount: self.config.fee_amount,
+            denom: Denom::from_str(&self.config.denom).map_err(|e| anyhow::anyhow!("Invalid denom: {}", e))?,
         };
-        let fee = Fee::from_amount_and_gas(fee, GAS_LIMIT);
+        let fee = Fee::from_amount_and_gas(fee, self.config.gas_limit);
 
         let tx_body = BodyBuilder::new().msg(msg).finish();
 

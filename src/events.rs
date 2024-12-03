@@ -25,7 +25,7 @@ pub struct PegOutEvent {
     pub msg_index: u32,
     pub sender: String,
     pub btc_address: String,
-    pub operator_btc_pk: String,
+    pub operator_id: u32,
     pub amount: u128,
 }
 
@@ -287,15 +287,16 @@ impl EventListener {
                     .get("btc_address")
                     .ok_or_else(|| anyhow!("Missing btc_address"))?
                     .clone();
-                let operator_btc_pk = attrs
-                    .get("operator_btc_pk")
-                    .ok_or_else(|| anyhow!("Missing operator_btc_pk"))?
-                    .clone();
+                let operator_id = attrs
+                    .get("operator_id")
+                    .ok_or_else(|| anyhow!("Missing operator_id"))?
+                    .parse::<u32>()
+                    .map_err(|e| anyhow!("Failed to parse operator_id: {}", e))?;
                 Ok(Some(ContractEvent::PegOut(PegOutEvent {
                     msg_index,
                     sender,
                     btc_address,
-                    operator_btc_pk,
+                    operator_id,
                     amount,
                 })))
             }
