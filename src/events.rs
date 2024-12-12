@@ -89,7 +89,7 @@ impl EventListener {
                     continue;
                 }
                 self.last_processed_height = height;
-                tracing::info!("Successfully processed block: {}", height);
+                tracing::debug!("Successfully processed block: {}", height);
             }
         }
     }

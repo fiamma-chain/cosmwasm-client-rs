@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize event listener
     let rpc_url = "https://rpc-euphrates.devnet.babylonlabs.io:443";
-    let contract_address = "bbn18rlp8ewpqsfmd8ur9sp7ml5tzs2d76cc3zafmpdypcuqr4lqx4xss7yc3s";
+    let contract_address = "bbn1sdq3gyl9cuad9d3jx8f23yzu0fz0wazlj2t5vgpksxxr2ehlnpgsvvg2qd";
 
     let mut event_listener = EventListener::new(
         rpc_url,
