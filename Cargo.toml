@@ -19,11 +19,14 @@ async-trait = "0.1"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-cosmos-sdk-proto = { version = "0.26.0"}
+cosmos-sdk-proto = { version = "0.26.0" }
 prost = "0.13.3"
 prost-types = "0.13.3"
 tendermint = "0.40.0"
-tendermint-rpc = { version = "0.40.0", features = ["http-client", "websocket-client"] }
+tendermint-rpc = { version = "0.40.0", features = [
+    "http-client",
+    "websocket-client",
+] }
 url = "2.4"
 anyhow = "1.0"
 tracing = "0.1"
@@ -33,7 +36,13 @@ base64 = "0.21.2"
 bytes = "1.4.0"
 tokio-stream = "0.1.14"
 tokio-util = "0.7.8"
-tonic = { version = "0.12.3", features = ["default", "prost", "tls", "tls-roots", "tls-webpki-roots"] }
+tonic = { version = "0.12.3", features = [
+    "default",
+    "prost",
+    "tls",
+    "tls-roots",
+    "tls-webpki-roots",
+] }
 hex = "0.4.3"
 cosmwasm-std = { version = "2.1.4", default-features = false, features = [
     "std",
@@ -44,6 +53,8 @@ cosmwasm-std = { version = "2.1.4", default-features = false, features = [
 ] }
 cosmwasm-schema = "2.1.4"
 sha2 = "0.10.6"
+cw20 = "2.0.0"
+dotenv = "0.15.0"
 
 [build-dependencies]
 tonic-build = "0.12.3"
