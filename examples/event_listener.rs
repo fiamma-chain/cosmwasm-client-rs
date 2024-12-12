@@ -15,14 +15,14 @@ async fn main() -> anyhow::Result<()> {
     let (tx, mut rx) = mpsc::channel::<BlockEvents>(1000);
 
     // Initialize event listener
-    let ws_url = "wss://rpc-euphrates.devnet.babylonlabs.io/websocket";
+    let rpc_url = "https://rpc-euphrates.devnet.babylonlabs.io:443";
     let contract_address = "bbn18rlp8ewpqsfmd8ur9sp7ml5tzs2d76cc3zafmpdypcuqr4lqx4xss7yc3s";
 
     let mut event_listener = EventListener::new(
-        ws_url,
+        rpc_url,
         tx,
         contract_address,
-        140366, // Start from block height 0
+        164000, // Start from block height 0
     )
     .await?;
 

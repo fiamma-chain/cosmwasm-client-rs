@@ -1,17 +1,13 @@
 use anyhow::{anyhow, Context, Result};
-use futures_util::StreamExt;
 use hex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tendermint::abci;
 use tendermint::block::Height;
-use tendermint_rpc::query::{EventType, Query};
-use tendermint_rpc::SubscriptionClient;
-use tendermint_rpc::{event::EventData, Client, WebSocketClient};
-use tokio::sync::{broadcast, mpsc};
+use tendermint_rpc::{Client, HttpClient};
+use tokio::sync::mpsc;
+use tokio::time::{interval, Duration};
 use tracing;
-
-const EVENT_PROCESSOR_SIZE: usize = 1000;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct PegInEvent {
@@ -42,73 +38,80 @@ pub struct BlockEvents {
 }
 
 pub struct EventListener {
-    ws_client: WebSocketClient,
-    latest_height_tx: broadcast::Sender<u64>,
-    latest_height_rx: broadcast::Receiver<u64>,
-    last_processed_height: u64,
+    rpc_client: HttpClient,
     event_sender: mpsc::Sender<BlockEvents>,
     contract_address: String,
+    last_processed_height: u64,
 }
 
 impl EventListener {
-    /// Creates a new EventListener instance
     pub async fn new(
-        ws_url: &str,
+        rpc_url: &str,
         event_sender: mpsc::Sender<BlockEvents>,
         contract_address: &str,
         last_processed_height: u64,
     ) -> anyhow::Result<Self> {
-        let ws_client = Self::connect(ws_url).await?;
-        let (latest_height_tx, latest_height_rx) = broadcast::channel(EVENT_PROCESSOR_SIZE);
+        let rpc_client = HttpClient::new(rpc_url).context("Failed to create HTTP client")?;
 
         Ok(Self {
-            ws_client,
-            latest_height_tx,
-            latest_height_rx,
-            last_processed_height,
+            rpc_client,
             event_sender,
             contract_address: contract_address.to_string(),
+            last_processed_height,
         })
     }
 
-    /// Connect to WebSocket endpoint
-    async fn connect(ws_url: &str) -> anyhow::Result<WebSocketClient> {
-        let (ws_client, driver) = WebSocketClient::new(ws_url)
-            .await
-            .context("Failed to create WebSocket client")?;
+    pub async fn start(&mut self) -> anyhow::Result<()> {
+        let mut interval_timer = interval(Duration::from_millis(100));
 
-        // Spawn WebSocket driver in a separate task
-        tokio::spawn(async move {
-            if let Err(e) = driver.run().await {
-                tracing::error!("WebSocket client driver error: {}", e);
+        loop {
+            interval_timer.tick().await;
+
+            // get latest block height
+            let status = self.rpc_client.status().await?;
+            let latest_height = status.sync_info.latest_block_height.value();
+
+            if latest_height <= self.last_processed_height {
+                // if already caught up to latest block, use longer interval
+                interval_timer = interval(Duration::from_secs(5));
+                continue;
             }
-        });
 
-        Ok(ws_client)
+            // if lagging behind more blocks, use shorter interval
+            if latest_height - self.last_processed_height > 10 {
+                interval_timer = interval(Duration::from_millis(100));
+            }
+
+            // process all blocks from last processed height to latest height
+            for height in (self.last_processed_height + 1)..=latest_height {
+                if let Err(e) = self.process_block(height).await {
+                    tracing::error!("Error processing block {}: {}", height, e);
+                    continue;
+                }
+                self.last_processed_height = height;
+                tracing::info!("Successfully processed block: {}", height);
+            }
+        }
     }
 
-    /// Get events for a specific block height
-    pub async fn get_block_events(
+    async fn get_block_events(
         &self,
         height: u64,
     ) -> anyhow::Result<Vec<(String, Vec<abci::Event>)>> {
-        let height = Height::try_from(height).context("Failed to convert height to u64")?;
+        let height = Height::try_from(height).context("Failed to convert height")?;
 
-        // Get both block and block results
-        let block = self.ws_client.block(height).await?;
-        let block_results = self.ws_client.block_results(height).await?;
+        // get block and block results
+        let block = self.rpc_client.block(height).await?;
+        let block_results = self.rpc_client.block_results(height).await?;
 
         let mut tx_events = Vec::new();
 
-        // Get transactions from block
         if let Some(tx_results) = block_results.txs_results {
             let txs = block.block.data;
 
-            // Ensure we have matching number of transactions and results
             if txs.len() == tx_results.len() {
                 for (i, tx) in txs.iter().enumerate() {
                     if let Some(result) = tx_results.get(i) {
-                        // Calculate transaction hash
                         let tx_hash = calculate_tx_hash(tx);
                         tx_events.push((tx_hash, result.events.clone()));
                     }
@@ -119,7 +122,6 @@ impl EventListener {
         Ok(tx_events)
     }
 
-    /// Process events for a specific block height
     async fn process_block(&self, height: u64) -> anyhow::Result<()> {
         tracing::debug!("Processing block at height: {}", height);
         let tx_events = self.get_block_events(height).await?;
@@ -144,93 +146,6 @@ impl EventListener {
                 .send(block_events)
                 .await
                 .map_err(|e| anyhow!("Failed to send block events to channel: {}", e))?;
-        }
-
-        Ok(())
-    }
-
-    /// Starts the event subscription and processing
-    pub async fn start(&mut self) -> anyhow::Result<()> {
-        // Start WebSocket subscription in a separate task
-        let height_tx = self.latest_height_tx.clone();
-        let ws_client = self.ws_client.clone();
-
-        tokio::spawn(async move {
-            if let Err(e) = Self::subscribe_to_events(ws_client, height_tx).await {
-                tracing::error!("Event subscription error: {}", e);
-            }
-        });
-
-        // Start block processing
-        self.process_blocks_sequentially().await
-    }
-
-    /// Subscribe to new block events via WebSocket
-    async fn subscribe_to_events(
-        ws_client: WebSocketClient,
-        height_tx: broadcast::Sender<u64>,
-    ) -> anyhow::Result<()> {
-        tracing::info!("Starting WebSocket subscription for new events");
-        let query = Query::from(EventType::NewBlock);
-        let mut event_stream = ws_client.subscribe(query).await?;
-
-        while let Some(event_result) = event_stream.next().await {
-            match event_result {
-                Ok(event) => {
-                    // Extract height from new block event
-                    let height = match &event.data {
-                        EventData::NewBlock { block, .. } => block
-                            .as_ref()
-                            .map(|b| b.header.height.value())
-                            .unwrap_or_default(),
-                        EventData::LegacyNewBlock { block, .. } => block
-                            .as_ref()
-                            .map(|b| b.header.height.value())
-                            .unwrap_or_default(),
-                        _ => 0u64,
-                    };
-
-                    if height > 0 {
-                        if let Err(e) = height_tx.send(height) {
-                            tracing::error!("Failed to send height: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Error in event stream: {}", e);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Process blocks sequentially, ensuring order
-    async fn process_blocks_sequentially(&mut self) -> anyhow::Result<()> {
-        tracing::info!(
-            "Starting sequential block processing from height: {}",
-            self.last_processed_height
-        );
-        let mut height_rx = self.latest_height_rx.resubscribe();
-
-        while let Ok(latest_height) = height_rx.recv().await {
-            if latest_height <= self.last_processed_height {
-                tracing::info!(
-                    "Latest height {} is not greater than last processed height {}",
-                    latest_height,
-                    self.last_processed_height
-                );
-                continue;
-            }
-            // Process all blocks from last_processed_height + 1 to latest_height
-            for height in self.last_processed_height + 1..=latest_height {
-                if let Err(e) = self.process_block(height).await {
-                    tracing::error!("Error processing block {}: {}", height, e);
-                    continue;
-                }
-                self.last_processed_height = height;
-                tracing::info!("Successfully processed block: {}", height);
-            }
         }
 
         Ok(())
