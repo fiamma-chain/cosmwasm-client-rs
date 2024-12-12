@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use anyhow::Context;
-use cosmrs::AccountId;
 use cosmos_sdk_proto::cosmos::{
     auth::v1beta1::{query_client::QueryClient, BaseAccount, QueryAccountRequest},
     tx::v1beta1::{
@@ -9,6 +8,7 @@ use cosmos_sdk_proto::cosmos::{
         GetTxRequest, GetTxResponse,
     },
 };
+use cosmrs::AccountId;
 
 use crate::chain::ChainConfig;
 use crate::wallet::Wallet;
@@ -66,14 +66,17 @@ impl CosmWasmClient {
             .account(QueryAccountRequest { address })
             .await
             .context("Failed to query account information")?;
-        
-        let account_info = resp.get_ref().clone().account
+
+        let account_info = resp
+            .get_ref()
+            .clone()
+            .account
             .ok_or_else(|| anyhow::anyhow!("No account data found"))?;
-            
+
         let account = account_info
             .to_msg::<BaseAccount>()
             .context("Failed to convert account info to BaseAccount")?;
-            
+
         Ok(account)
     }
 

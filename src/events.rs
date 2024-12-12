@@ -121,6 +121,7 @@ impl EventListener {
 
     /// Process events for a specific block height
     async fn process_block(&self, height: u64) -> anyhow::Result<()> {
+        tracing::debug!("Processing block at height: {}", height);
         let tx_events = self.get_block_events(height).await?;
         let mut contract_events = Vec::new();
 
@@ -206,6 +207,10 @@ impl EventListener {
 
     /// Process blocks sequentially, ensuring order
     async fn process_blocks_sequentially(&mut self) -> anyhow::Result<()> {
+        tracing::info!(
+            "Starting sequential block processing from height: {}",
+            self.last_processed_height
+        );
         let mut height_rx = self.latest_height_rx.resubscribe();
 
         while let Ok(latest_height) = height_rx.recv().await {
@@ -224,6 +229,7 @@ impl EventListener {
                     continue;
                 }
                 self.last_processed_height = height;
+                tracing::info!("Successfully processed block: {}", height);
             }
         }
 

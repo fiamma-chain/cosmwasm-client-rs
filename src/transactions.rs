@@ -228,7 +228,8 @@ impl CosmWasmClient {
 
         let fee = Coin {
             amount: self.config.fee_amount,
-            denom: Denom::from_str(&self.config.denom).map_err(|e| anyhow::anyhow!("Invalid denom: {}", e))?,
+            denom: Denom::from_str(&self.config.denom)
+                .map_err(|e| anyhow::anyhow!("Invalid denom: {}", e))?,
         };
         let fee = Fee::from_amount_and_gas(fee, self.config.gas_limit);
 
