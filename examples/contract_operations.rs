@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
         babylon_chain_config.clone(),
     )
     .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
-    let recipient = "bbn1ad2u30qd2vx6es4pmn28y23qtz6hea7708574y";
+    let recipient = "bbn1zyn8k5d0heyafjz0fx0frrelpr00hesvkhx88q";
 
     // Test 1: Peg-in some tokens
 
@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
 
     // // // // Test 2: Peg-out some tokens
     // let btc_address = "bcrt1phcnl4zcl2fu047pv4wx6y058v8u0n02at6lthvm7pcf2wrvjm5tqatn90k";
-    // let amount = 20000;
+    // let amount = 2000;
     // let operator_btc_pk = "1";
     // println!("Performing peg-out...");
     // let tx_hash = client.peg_out(btc_address, amount, operator_btc_pk).await?;

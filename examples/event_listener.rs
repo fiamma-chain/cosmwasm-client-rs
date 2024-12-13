@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow;
 use cosmwasm_client_rs::{
     events::{BlockEvents, ContractEvent, PegInEvent, PegOutEvent},
@@ -28,9 +30,16 @@ async fn main() -> anyhow::Result<()> {
 
     // Start event listening in background task
     tokio::spawn(async move {
-        tracing::info!("Starting event listener task...");
-        if let Err(e) = event_listener.start().await {
-            tracing::error!("Event listener error: {}", e);
+        loop {
+            match event_listener.start().await {
+                Ok(_) => {
+                    tracing::error!("EventListener unexpectedly terminated");
+                }
+                Err(e) => {
+                    tracing::error!("EventListener error: {}", e);
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                }
+            }
         }
     });
 
