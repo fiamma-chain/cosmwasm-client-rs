@@ -49,6 +49,9 @@ impl Default for InstantiateMsg {
 pub enum ExecuteMsg {
     /// PegIn is the message for peg in requests
     PegIn {
+        /// sender_btc_pk is the Bitcoin public key of the sender
+        /// The BTC PK is in the compressed format (33 bytes)
+        sender_btc_pk: String,
         /// receiver_address is the Cosmos address of the receiver
         /// who receives the $bBTC tokens
         receiver_address: Addr,
@@ -73,6 +76,7 @@ pub enum ExecuteMsg {
         /// amount is the amount of $bBTC to peg out
         amount: Uint128,
         /// operator_btc_pk is the Bitcoin public key of the operator
+        /// The BTC PK is in the compressed format (33 bytes)
         operator_btc_pk: String,
         // TODO: more fields
     },
@@ -100,6 +104,7 @@ impl CosmWasmClient {
     /// Mints tokens to the specified recipient
     pub async fn peg_in(
         &self,
+        sender_btc_pk: &str,
         recipient: &str,
         amount: u128,
         block_hash: &str,
@@ -108,6 +113,7 @@ impl CosmWasmClient {
         pegin_tx_merkle_proof: Vec<String>,
     ) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegIn {
+            sender_btc_pk: sender_btc_pk.to_string(),
             receiver_address: Addr::unchecked(recipient),
             amount: Uint128::from(amount),
             btc_block_hash: block_hash.to_string(),
