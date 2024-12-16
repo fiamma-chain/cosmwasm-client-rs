@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         rpc_url,
         tx,
         contract_address,
-        164000, // Start from block height 0
+        170000, // Start from block height 170000
     )
     .await?;
 

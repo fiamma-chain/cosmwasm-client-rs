@@ -6,7 +6,7 @@ use tendermint::abci;
 use tendermint::block::Height;
 use tendermint_rpc::{Client, HttpClient};
 use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, Instant};
 use tracing;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -60,40 +60,52 @@ impl EventListener {
             last_processed_height,
         })
     }
-
     pub async fn start(&mut self) -> anyhow::Result<()> {
-        let mut interval_timer = interval(Duration::from_millis(100));
+        let mut status_check_interval = Duration::from_secs(5);
+        let mut next_status_check = Instant::now();
+        let mut latest_height = 0;
 
         loop {
-            interval_timer.tick().await;
+            let now = Instant::now();
 
-            // get latest block height
-            let status = self.rpc_client.status().await?;
-            let latest_height = status.sync_info.latest_block_height.value();
+            // Only check status when it's time
+            if now >= next_status_check {
+                let status = self.rpc_client.status().await?;
+                latest_height = status.sync_info.latest_block_height.value();
 
-            if latest_height <= self.last_processed_height {
-                // if already caught up to latest block, use longer interval
-                interval_timer = interval(Duration::from_secs(5));
-                continue;
+                // Dynamically adjust the next check interval based on the lag
+                let blocks_behind = latest_height.saturating_sub(self.last_processed_height);
+                status_check_interval = match blocks_behind {
+                    0..=10 => Duration::from_secs(5), // close to sync, 5 seconds query once
+                    11..=100 => Duration::from_secs(15), // lag more, 15 seconds query once
+                    _ => Duration::from_secs(30),     // lag more, 30 seconds query once
+                };
+
+                // Use the calculated status_check_interval to set the next check time
+                next_status_check = now + status_check_interval;
+                tracing::info!(
+                    "Latest height: {}, blocks behind: {}, next check in {:?}",
+                    latest_height,
+                    blocks_behind,
+                    status_check_interval
+                );
             }
 
-            // if lagging behind more blocks, use shorter interval
-            if latest_height - self.last_processed_height > 10 {
-                interval_timer = interval(Duration::from_millis(100));
-            }
-
-            // process all blocks from last processed height to latest height
-            for height in (self.last_processed_height + 1)..=latest_height {
-                if let Err(e) = self.process_block(height).await {
-                    tracing::error!("Error processing block {}: {}", height, e);
+            // If there are still blocks to process
+            if latest_height > self.last_processed_height {
+                let next_height = self.last_processed_height + 1;
+                if let Err(e) = self.process_block(next_height).await {
+                    tracing::error!("Error processing block {}: {}", next_height, e);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
-                self.last_processed_height = height;
-                tracing::debug!("Successfully processed block: {}", height);
+                self.last_processed_height = next_height;
+            } else {
+                // already sync to latest, sleep a short time
+                tokio::time::sleep(status_check_interval).await;
             }
         }
     }
-
     async fn get_block_events(
         &self,
         height: u64,
