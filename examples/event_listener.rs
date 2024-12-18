@@ -14,7 +14,8 @@ async fn main() -> anyhow::Result<()> {
     fmt::init();
 
     // Create event channel with sufficient buffer
-    let (tx, mut rx) = mpsc::channel::<BlockEvents>(1000);
+    let (event_tx, mut event_rx) = mpsc::channel(100);
+    let (checkpoint_tx, mut checkpoint_rx) = mpsc::channel(100);
 
     // Initialize event listener
     let rpc_url = "https://rpc-euphrates.devnet.babylonlabs.io:443";
@@ -22,30 +23,29 @@ async fn main() -> anyhow::Result<()> {
 
     let mut event_listener = EventListener::new(
         rpc_url,
-        tx,
+        event_tx,
+        checkpoint_tx,
         contract_address,
         170000, // Start from block height 170000
     )
     .await?;
 
-    // Start event listening in background task
     tokio::spawn(async move {
-        loop {
-            match event_listener.start().await {
-                Ok(_) => {
-                    tracing::error!("EventListener unexpectedly terminated");
-                }
-                Err(e) => {
-                    tracing::error!("EventListener error: {}", e);
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                }
-            }
+        if let Err(e) = event_listener.start().await {
+            tracing::error!("Event listener error: {}", e);
+        }
+    });
+
+    // Process checkpoint in background task
+    tokio::spawn(async move {
+        while let Some(height) = checkpoint_rx.recv().await {
+            println!("Received checkpoint: {}", height);
         }
     });
 
     // Process events in main task
     tracing::info!("Starting event processing loop...");
-    while let Some(block_events) = rx.recv().await {
+    while let Some(block_events) = event_rx.recv().await {
         tracing::info!(
             "Received block {} with {} events",
             block_events.height,

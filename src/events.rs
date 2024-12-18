@@ -40,6 +40,7 @@ pub struct BlockEvents {
 pub struct EventListener {
     rpc_client: HttpClient,
     event_sender: mpsc::Sender<BlockEvents>,
+    checkpoint_sender: mpsc::Sender<u64>,
     contract_address: String,
     last_processed_height: u64,
 }
@@ -48,6 +49,7 @@ impl EventListener {
     pub async fn new(
         rpc_url: &str,
         event_sender: mpsc::Sender<BlockEvents>,
+        checkpoint_sender: mpsc::Sender<u64>,
         contract_address: &str,
         last_processed_height: u64,
     ) -> anyhow::Result<Self> {
@@ -56,6 +58,7 @@ impl EventListener {
         Ok(Self {
             rpc_client,
             event_sender,
+            checkpoint_sender,
             contract_address: contract_address.to_string(),
             last_processed_height,
         })
@@ -148,7 +151,7 @@ impl EventListener {
             }
         }
 
-        // If we have any events, send them as a batch
+        // If we have any events, send them
         if !contract_events.is_empty() {
             let block_events = BlockEvents {
                 height,
@@ -157,7 +160,16 @@ impl EventListener {
             self.event_sender
                 .send(block_events)
                 .await
-                .map_err(|e| anyhow!("Failed to send block events to channel: {}", e))?;
+                .map_err(|e| anyhow!("Failed to send block events: {}", e))?;
+        }
+
+        // event listener checkpoint
+        if height % 10 == 0 {
+            if let Err(e) = self.checkpoint_sender.send(height).await {
+                tracing::error!("Failed to send checkpoint for height {}: {}", height, e);
+            } else {
+                tracing::debug!("Checkpoint saved at height: {}", height);
+            }
         }
 
         Ok(())

@@ -55,6 +55,15 @@ async fn main() -> anyhow::Result<()> {
         babylon_chain_config.clone(),
     )
     .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+
+    let dev_client = CosmWasmClient::new(
+        rpc_url,
+        &private_key,
+        dev_bridge_contract,
+        babylon_chain_config.clone(),
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+
     let recipient = "bbn1zyn8k5d0heyafjz0fx0frrelpr00hesvkhx88q";
 
     // Test 1: Peg-in some tokens
@@ -110,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
     let amount = 5000;
     let operator_btc_pk = "1";
     println!("Performing peg-out...");
-    let tx_hash = local_client
+    let tx_hash = dev_client
         .peg_out(regtest_btc_receiver_address, amount, operator_btc_pk)
         .await?;
     println!("Peg-out completed. Tx hash: {}", tx_hash);
