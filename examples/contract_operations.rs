@@ -116,10 +116,10 @@ async fn main() -> anyhow::Result<()> {
     // println!("Allowance increased. Tx hash: {}", tx_hash);
 
     // // // // Test 2: Peg-out some tokens
-    let amount = 5000;
+    let amount = 50000;
     let operator_btc_pk = "1";
     println!("Performing peg-out...");
-    let tx_hash = dev_client
+    let tx_hash = local_client
         .peg_out(regtest_btc_receiver_address, amount, operator_btc_pk)
         .await?;
     println!("Peg-out completed. Tx hash: {}", tx_hash);
