@@ -57,4 +57,4 @@ cw20 = "2.0.0"
 dotenv = "0.15.0"
 
 [build-dependencies]
-tonic-build = "0.12.3"
+tonic-build = { version = "0.12.3", features = ["default", "prost"] }

@@ -3,6 +3,7 @@ use anyhow;
 use cosmos_sdk_proto::cosmwasm::wasm::v1::{
     query_client::QueryClient as WasmQueryClient, QuerySmartContractStateRequest,
 };
+
 use cosmwasm_client_rs::{chain::ChainConfig, CosmWasmClient};
 use cosmwasm_std::{from_json, to_json_binary, Uint128};
 use dotenv;
@@ -86,6 +87,11 @@ async fn main() -> anyhow::Result<()> {
     //     "1d97156d2c29a24cbaa0e3e27ab97cbdde1e8b7f0ac803a1af696267ea92ba7e".to_string(),
     // ];
 
+    // before peg-in we need to check if the block hash is in the btc light client
+    // let btc_block_hash = "000001156c33b485db8a5d1de27f9d73e0e397ee0654ded0208acd3b6a10989c";
+    // let is_in_btc_light_client = dev_client.query_header_contains(btc_block_hash).await?;
+    // println!("Is in btc light client: {}", is_in_btc_light_client);
+
     // let tx_hash = client
     //     .peg_in(
     //         sender_btc_pk,
@@ -100,12 +106,16 @@ async fn main() -> anyhow::Result<()> {
     // println!("Peg-in completed. Tx hash: {}", tx_hash);
 
     // Before peg-out we need to approve the bridge contract to spend the cw20tokens
-    // let cw20_client =
-    //     CosmWasmClient::new(rpc_url, &private_key, cw20_contract, babylon_chain_config)
-    //         .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+    // let cw20_client = CosmWasmClient::new(
+    //     rpc_url,
+    //     &private_key,
+    //     local_cw20_contract,
+    //     babylon_chain_config,
+    // )
+    // .map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
     // let increase_allowance_msg = cw20::Cw20ExecuteMsg::IncreaseAllowance {
     //     spender: local_bridge_contract.to_string(),
-    //     amount: Uint128::from(10000u128),
+    //     amount: Uint128::from(10000000000000u128),
     //     expires: None,
     // };
 
@@ -116,13 +126,13 @@ async fn main() -> anyhow::Result<()> {
     // println!("Allowance increased. Tx hash: {}", tx_hash);
 
     // // // // Test 2: Peg-out some tokens
-    let amount = 47500;
-    let operator_btc_pk = "1";
-    println!("Performing peg-out...");
-    let tx_hash = local_client
-        .peg_out(regtest_btc_receiver_address, amount, operator_btc_pk)
-        .await?;
-    println!("Peg-out completed. Tx hash: {}", tx_hash);
+    // let amount = 47500;
+    // let operator_btc_pk = "1";
+    // println!("Performing peg-out...");
+    // let tx_hash = local_client
+    //     .peg_out(regtest_btc_receiver_address, amount, operator_btc_pk)
+    //     .await?;
+    // println!("Peg-out completed. Tx hash: {}", tx_hash);
 
     // query cw20 balance
 

@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::generated::babylon::btclightclient;
 use anyhow::Context;
 use cosmos_sdk_proto::cosmos::{
     auth::v1beta1::{query_client::QueryClient, BaseAccount, QueryAccountRequest},
@@ -94,5 +95,22 @@ impl CosmWasmClient {
             .into_inner();
 
         Ok(response)
+    }
+
+    pub async fn query_header_contains(&self, block_hash: &str) -> anyhow::Result<bool> {
+        let mut client =
+            btclightclient::v1::query_client::QueryClient::connect(self.grpc_url.clone())
+                .await
+                .context("Failed to connect to gRPC service")?;
+        let mut hash_bytes =
+            hex::decode(block_hash).context("Failed to decode block hash from hex")?;
+        hash_bytes.reverse();
+
+        let resp = client
+            .contains_bytes(btclightclient::v1::QueryContainsBytesRequest { hash: hash_bytes })
+            .await
+            .context("Failed to query header contains")?;
+
+        Ok(resp.into_inner().contains)
     }
 }
