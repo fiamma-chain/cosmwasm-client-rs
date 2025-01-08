@@ -18,15 +18,15 @@ async fn main() -> anyhow::Result<()> {
     let (checkpoint_tx, mut checkpoint_rx) = mpsc::channel(100);
 
     // Initialize event listener
-    let rpc_url = "https://rpc-euphrates.devnet.babylonlabs.io:443";
-    let contract_address = "bbn1sdq3gyl9cuad9d3jx8f23yzu0fz0wazlj2t5vgpksxxr2ehlnpgsvvg2qd";
+    let rpc_url = "https://babylon-testnet-rpc.polkachu.com";
+    let contract_address = "bbn17p9rzwnnfxcjp32un9ug7yhhzgtkhvl9jfksztgw5uh69wac2pgs6spw0g";
 
     let mut event_listener = EventListener::new(
         rpc_url,
         event_tx,
         checkpoint_tx,
         contract_address,
-        170000, // Start from block height 170000
+        1200, // Start from block height 170000
     )
     .await?;
 
