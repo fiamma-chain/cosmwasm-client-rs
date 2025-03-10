@@ -1,8 +1,15 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = "src/generated";
+
+    let protoc_check = Command::new("protoc").arg("--version").output();
+    if protoc_check.is_err() {
+        println!("cargo:warning=protoc not found, skipping proto generation");
+        return Ok(());
+    }
 
     // ensure out_dir exists
     fs::create_dir_all(out_dir)?;

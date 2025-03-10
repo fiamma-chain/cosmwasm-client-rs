@@ -1,8 +1,6 @@
-use std::time::Duration;
-
 use anyhow;
 use cosmwasm_client_rs::{
-    events::{BlockEvents, ContractEvent, PegInEvent, PegOutEvent},
+    events::{ContractEvent, PegInEvent, PegOutEvent},
     EventListener,
 };
 use tokio::sync::mpsc;
