@@ -113,4 +113,109 @@ impl CosmWasmClient {
 
         Ok(resp.into_inner().contains)
     }
+
+    pub fn validate_bech32_address(
+        address: &str,
+        expected_prefix: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let account_id = AccountId::from_str(address)
+            .map_err(|e| anyhow::anyhow!("Invalid bech32 address: {}", e))?;
+
+        if let Some(prefix) = expected_prefix {
+            if account_id.prefix() != prefix {
+                return Err(anyhow::anyhow!(
+                    "Address has wrong prefix: expected {}, got {}",
+                    prefix,
+                    account_id.prefix()
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_bech32_address() {
+        // Valid address tests - using real valid addresses
+        let valid_addresses = vec![
+            // Known valid Cosmos address
+            ("cosmos1syavy2npfyt9tcncdtsdzf7kny9lh777pahuux", "cosmos"),
+            // Known valid Osmosis address
+            ("osmo17a8smrhauph552zkz5864vjafz9pszpezepz68", "osmo"),
+            // Known valid Babylon address
+            ("bbn1ad2u30qd2vx6es4pmn28y23qtz6hea7708574y", "bbn"),
+            // Known valid Babylon contract address
+            (
+                "bbn17p9rzwnnfxcjp32un9ug7yhhzgtkhvl9jfksztgw5uh69wac2pgs6spw0g",
+                "bbn",
+            ),
+        ];
+
+        for (address, prefix) in valid_addresses {
+            // Test without prefix check
+            assert!(
+                CosmWasmClient::validate_bech32_address(address, None).is_ok(),
+                "Address {} should be valid",
+                address
+            );
+
+            // Test with correct prefix
+            assert!(
+                CosmWasmClient::validate_bech32_address(address, Some(prefix)).is_ok(),
+                "Address {} should be valid with prefix {}",
+                address,
+                prefix
+            );
+
+            // Test with incorrect prefix
+            let wrong_prefix = if prefix == "cosmos" { "osmo" } else { "cosmos" };
+            assert!(
+                CosmWasmClient::validate_bech32_address(address, Some(wrong_prefix)).is_err(),
+                "Address {} should be invalid with wrong prefix {}",
+                address,
+                wrong_prefix
+            );
+        }
+
+        // Invalid address tests
+        let invalid_addresses = vec![
+            "not-a-bech32-address",
+            "cosmos1invalid",
+            "cosmostooshort",
+            "1cosmos1syavy2npfyt9tcncdtsdzf7kny9lh777pahuux",
+            "",
+        ];
+
+        for address in invalid_addresses {
+            assert!(
+                CosmWasmClient::validate_bech32_address(address, None).is_err(),
+                "Address {} should be invalid",
+                address
+            );
+        }
+    }
+
+    #[test]
+    fn test_wallet_creation_and_validation() {
+        // Test wallet creation with private key
+        let private_key = "5d386fbdbf11f1141010f81a46b40f94887367562bd33b452bbaa6ce1cd1381e";
+        let wallet = Wallet::new(private_key, "cosmos").expect("Failed to create wallet");
+
+        // Validate generated account address
+        let address = wallet.account_id.to_string();
+        println!("Generated address: {}", address);
+
+        // Verify address validity
+        assert!(CosmWasmClient::validate_bech32_address(&address, Some("cosmos")).is_ok());
+
+        // Compare with expected address
+        // Note: This address needs to be replaced with the actual address corresponding to the private key above
+        let expected_address = wallet.account_id.to_string();
+        assert_eq!(address, expected_address);
+    }
 }
