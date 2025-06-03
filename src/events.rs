@@ -34,6 +34,7 @@ pub enum ContractEvent {
 #[derive(Debug)]
 pub struct BlockEvents {
     pub height: u64,
+    pub block_time: u64,
     pub events: Vec<(String, ContractEvent)>, // (tx_hash, event)
 }
 
@@ -112,7 +113,7 @@ impl EventListener {
     async fn get_block_events(
         &self,
         height: u64,
-    ) -> anyhow::Result<Vec<(String, Vec<abci::Event>)>> {
+    ) -> anyhow::Result<(u64, Vec<(String, Vec<abci::Event>)>)> {
         let height = Height::try_from(height).context("Failed to convert height")?;
 
         // get block and block results
@@ -134,12 +135,14 @@ impl EventListener {
             }
         }
 
-        Ok(tx_events)
+        // Return block time along with events
+        let block_time = block.block.header.time.unix_timestamp() as u64;
+        Ok((block_time, tx_events))
     }
 
     async fn process_block(&self, height: u64) -> anyhow::Result<()> {
         tracing::debug!("Processing block at height: {}", height);
-        let tx_events = self.get_block_events(height).await?;
+        let (block_time, tx_events) = self.get_block_events(height).await?;
         let mut contract_events = Vec::new();
 
         // Collect all contract events from this block
@@ -155,6 +158,7 @@ impl EventListener {
         if !contract_events.is_empty() {
             let block_events = BlockEvents {
                 height,
+                block_time,
                 events: contract_events,
             };
             self.event_sender
