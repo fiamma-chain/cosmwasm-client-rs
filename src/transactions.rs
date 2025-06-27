@@ -73,6 +73,8 @@ pub enum ExecuteMsg {
         /// btc_address is the Bitcoin address for receiving the
         /// pegged out $BTC
         btc_address: String,
+        /// fee_rate is the fee rate of the peg out transaction
+        fee_rate: u32,
         /// amount is the amount of $bBTC to peg out
         amount: Uint128,
         /// operator_btc_pk is the Bitcoin public key of the operator
@@ -129,11 +131,13 @@ impl CosmWasmClient {
     pub async fn peg_out(
         &self,
         btc_address: &str,
+        fee_rate: u32,
         amount: u128,
         operator_btc_pk: &str,
     ) -> anyhow::Result<String> {
         let msg = ExecuteMsg::PegOut {
             btc_address: btc_address.to_string(),
+            fee_rate,
             amount: Uint128::from(amount),
             operator_btc_pk: operator_btc_pk.to_string(),
         };

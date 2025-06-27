@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     let (checkpoint_tx, mut checkpoint_rx) = mpsc::channel(100);
 
     // Initialize event listener
-    let rpc_url = "https://babylon-testnet-rpc.polkachu.com";
+    let rpc_url = "https://babylon-testnet-rpc.nodes.guru";
     let contract_address = "bbn17p9rzwnnfxcjp32un9ug7yhhzgtkhvl9jfksztgw5uh69wac2pgs6spw0g";
 
     let mut event_listener = EventListener::new(
@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         event_tx,
         checkpoint_tx,
         contract_address,
-        1200, // Start from block height 170000
+        1329500, // Start from block height 1329500
     )
     .await?;
 
@@ -70,15 +70,17 @@ async fn main() -> anyhow::Result<()> {
                     msg_index,
                     sender,
                     btc_address,
+                    fee_rate,
                     operator_btc_pk,
                     amount,
                 }) => {
                     tracing::info!(
-                        "Received PegOut event tx_hash: {} msg_index: {} sender: {} btc_address: {} operator_btc_pk: {} amount: {}",
+                        "Received PegOut event tx_hash: {} msg_index: {} sender: {} btc_address: {} fee_rate: {} operator_btc_pk: {} amount: {}",
                         tx_hash,
                         msg_index,
                         sender,
                         btc_address,
+                        fee_rate,
                         operator_btc_pk,
                         amount
                     );
